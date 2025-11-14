@@ -36,7 +36,8 @@ export default function StatusPage() {
       const response = await fetch(`${API_BASE_URL}/api/status/${jobId}`)
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Failed to fetch status`)
+        const errorText = await response.text().catch(() => '')
+        throw new Error(`HTTP ${response.status}: ${errorText || 'Failed to fetch status'}`)
       }
 
       const data = await response.json()
@@ -51,7 +52,16 @@ export default function StatusPage() {
         toast.error(data.error || 'Build failed')
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      let errorMessage = 'Unknown error'
+      
+      if (err instanceof Error) {
+        // Distinguish between network errors and HTTP errors
+        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          errorMessage = 'Server unreachable – is the backend running?'
+        } else {
+          errorMessage = err.message
+        }
+      }
       
       if (retryCount < maxRetries) {
         retryCountRef.current = retryCount + 1
@@ -59,7 +69,7 @@ export default function StatusPage() {
       } else {
         setError(errorMessage)
         setIsLoading(false)
-        toast.error(`Failed to load status after ${maxRetries} attempts`)
+        toast.error(`Failed to load status after ${maxRetries} attempts: ${errorMessage}`)
       }
     }
   }

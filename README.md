@@ -54,33 +54,84 @@ This is a monorepo containing both the backend (FastAPI) and frontend (Next.js) 
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
-- OpenAI API key
+- Python 3.10 or higher
+- Node.js 18 or higher
+- OpenAI API key (required for AI features)
 
 ### Backend Setup
 
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
-uvicorn app.main:app --reload
-```
+1. **Navigate to backend directory:**
+   ```bash
+   cd backend
+   ```
 
-Backend will run on `http://localhost:8000`
+2. **Create and activate virtual environment:**
+   ```bash
+   python -m venv venv
+   
+   # On macOS/Linux:
+   source venv/bin/activate
+   
+   # On Windows:
+   venv\Scripts\activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Set up environment variables:**
+   ```bash
+   # On macOS/Linux:
+   cp .env.example .env
+   
+   # On Windows:
+   copy .env.example .env
+   ```
+   
+   Edit `.env` and add your `OPENAI_API_KEY` (and optionally GitHub credentials).
+
+5. **Run the development server:**
+   ```bash
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+   Backend will run on `http://localhost:8000`
 
 ### Frontend Setup
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+1. **Navigate to frontend directory** (in a new terminal):
+   ```bash
+   cd frontend
+   ```
 
-Frontend will run on `http://localhost:3000`
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables** (optional):
+   ```bash
+   # On macOS/Linux:
+   cp .env.local.example .env.local
+   
+   # On Windows:
+   copy .env.local.example .env.local
+   ```
+   
+   Edit `.env.local` if your backend is running on a different URL (defaults to `http://localhost:8000`).
+
+4. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
+
+   Frontend will run on `http://localhost:3000`
+
+### Access the Application
+
+Open [http://localhost:3000](http://localhost:3000) in your browser to access the AI App Builder.
 
 ## Usage
 

@@ -40,41 +40,73 @@ backend/
 
 ## Installation
 
-1. **Create a virtual environment** (recommended):
+### 1. Create a Virtual Environment
 
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-2. **Install dependencies**:
+**Activate the virtual environment:**
+
+- On macOS/Linux:
+  ```bash
+  source venv/bin/activate
+  ```
+
+- On Windows:
+  ```bash
+  venv\Scripts\activate
+  ```
+
+### 2. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. **Set up environment variables**:
+### 3. Set Up Environment Variables
+
+Copy the example environment file and fill in your values:
 
 ```bash
+# On macOS/Linux:
 cp .env.example .env
-# Edit .env and add your configuration:
-# - OPENAI_API_KEY (required for AI features)
-# - GITHUB_TOKEN (optional, for GitHub integration)
-# - GITHUB_USERNAME (optional, for GitHub integration)
-# - OPENAI_MODEL (optional, defaults to gpt-4)
+
+# On Windows:
+copy .env.example .env
 ```
 
-4. **Database Setup**:
+Edit `.env` and add your configuration:
+
+- **OPENAI_API_KEY** (required for AI features): Your OpenAI API key
+- **OPENAI_MODEL** (optional, defaults to `gpt-4`): The OpenAI model to use
+- **GITHUB_TOKEN** (optional): GitHub personal access token for repository creation
+- **GITHUB_USERNAME** (optional): Your GitHub username
+- **CORS_ORIGINS** (optional, defaults to `http://localhost:3000`): Comma-separated list of allowed origins
+
+Example `.env` file:
+```env
+OPENAI_API_KEY=sk-your-key-here
+OPENAI_MODEL=gpt-4
+GITHUB_TOKEN=ghp_your-token-here
+GITHUB_USERNAME=your-username
+CORS_ORIGINS=http://localhost:3000
+```
+
+### 4. Database Setup
 
 The database (SQLite) will be automatically created on first run. The database file `app_builder.db` will be created in the backend directory.
 
-5. **Run the development server**:
+### 5. Run the Development Server
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at `http://localhost:8000`
+
+- API Documentation (Swagger UI): `http://localhost:8000/docs`
+- API Documentation (ReDoc): `http://localhost:8000/redoc`
 
 ## API Endpoints
 

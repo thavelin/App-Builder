@@ -26,18 +26,18 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Create .env file
-# Copy the example and add your OpenAI API key
-# Windows:
+# Create .env file from example
+# On Windows:
 copy .env.example .env
-# macOS/Linux:
+# On macOS/Linux:
 cp .env.example .env
 
-# Edit .env and add:
-# OPENAI_API_KEY=your_key_here (required for AI features)
-# GITHUB_TOKEN=your_token (optional, for GitHub integration)
-# GITHUB_USERNAME=your_username (optional)
-# OPENAI_MODEL=gpt-4 (optional, defaults to gpt-4)
+# Edit .env and add your configuration:
+# - OPENAI_API_KEY=your_key_here (required for AI features)
+# - OPENAI_MODEL=gpt-4 (optional, defaults to gpt-4)
+# - GITHUB_TOKEN=your_token (optional, for GitHub integration)
+# - GITHUB_USERNAME=your_username (optional)
+# - CORS_ORIGINS=http://localhost:3000 (optional, defaults to http://localhost:3000)
 
 # Run the server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -55,6 +55,15 @@ cd frontend
 
 # Install dependencies
 npm install
+
+# Create .env.local file from example (optional)
+# On Windows:
+copy .env.local.example .env.local
+# On macOS/Linux:
+cp .env.local.example .env.local
+
+# Edit .env.local if needed (defaults to http://localhost:8000):
+# NEXT_PUBLIC_API_URL=http://localhost:8000
 
 # Run the development server
 npm run dev
@@ -136,9 +145,16 @@ App-Builder/
 - If you need to reset, delete `app_builder.db` and restart the server
 
 ### OpenAI API errors
-- Verify your `OPENAI_API_KEY` is set correctly in `.env`
+- Verify your `OPENAI_API_KEY` is set correctly in `backend/.env`
 - Check that you have API credits/quota available
 - The app will fall back to placeholder responses if OpenAI is not configured
+- If OpenAI is not configured, builds will still complete but with basic placeholder code
+
+### Network/Connection errors
+- If you see "Server unreachable – is the backend running?", check that:
+  - The backend server is running on port 8000
+  - The `NEXT_PUBLIC_API_URL` in `frontend/.env.local` matches your backend URL
+  - There are no firewall issues blocking the connection
 
 ### WebSocket connection issues
 - The frontend automatically falls back to polling if WebSocket fails

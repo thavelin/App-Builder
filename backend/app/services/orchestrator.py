@@ -97,7 +97,7 @@ class Orchestrator:
                     )
             except Exception as e:
                 # GitHub failure shouldn't block completion
-                print(f"GitHub integration failed: {e}")
+                print(f"GitHub integration failed: {e}", flush=True)
             
             # Step 6: Trigger deployment (placeholder)
             # deployment_url = await self.github_service.trigger_deploy(job_id)
@@ -111,12 +111,23 @@ class Orchestrator:
             )
             
         except Exception as e:
-            await self._update_job_status(
-                job_id,
-                "failed",
-                "error",
-                error=str(e)
-            )
+            # Log the exception for debugging
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"Orchestrator error for job {job_id}:", flush=True)
+            print(error_details, flush=True)
+            
+            # Always update job status to failed on exception
+            try:
+                await self._update_job_status(
+                    job_id,
+                    "failed",
+                    "error",
+                    error=f"Internal error: {str(e)}"
+                )
+            except Exception as update_error:
+                # If even status update fails, log it
+                print(f"Failed to update job status after error: {update_error}", flush=True)
     
     def _prepare_project_files(self, results: Dict[str, Any]) -> Dict[str, str]:
         """

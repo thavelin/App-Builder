@@ -29,7 +29,7 @@ frontend/
 
 ## Installation
 
-1. **Install dependencies**:
+### 1. Install Dependencies
 
 ```bash
 npm install
@@ -39,15 +39,27 @@ yarn install
 pnpm install
 ```
 
-2. **Set up environment variables** (optional):
+### 2. Set Up Environment Variables
 
-Create a `.env.local` file:
+Copy the example environment file and fill in your values:
+
+```bash
+# On macOS/Linux:
+cp .env.local.example .env.local
+
+# On Windows:
+copy .env.local.example .env.local
+```
+
+Edit `.env.local` and set the backend API URL:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-3. **Run the development server**:
+**Note:** If you don't create `.env.local`, the app will default to `http://localhost:8000`.
+
+### 3. Run the Development Server
 
 ```bash
 npm run dev
@@ -58,6 +70,8 @@ pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+**Important:** Make sure the backend server is running on port 8000 before starting the frontend.
 
 ## Usage
 

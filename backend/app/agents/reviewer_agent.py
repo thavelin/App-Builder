@@ -40,13 +40,14 @@ class ReviewerAgent:
         - feedback: Detailed feedback
         """
         if not self.client:
-            # Fallback: approve after first iteration if OpenAI not configured
-            score = 85 if iteration > 0 else 70
+            # Fallback: approve by default on first iteration to avoid blocking progress
+            # Still include a warning in issues to inform the user
+            score = 85
             return {
-                "approved": score >= self.approval_threshold,
+                "approved": True,  # Always approve on first iteration when OpenAI not configured
                 "score": score,
-                "issues": [] if score >= self.approval_threshold else ["OpenAI not configured for review"],
-                "feedback": f"Review iteration {iteration + 1}: {'Approved' if score >= self.approval_threshold else 'Needs improvement'}",
+                "issues": ["OpenAI not configured for review - using fallback approval"],
+                "feedback": f"Review iteration {iteration + 1}: Approved (OpenAI not configured, using fallback)",
                 "iteration": iteration
             }
         
