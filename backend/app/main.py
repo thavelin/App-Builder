@@ -2,9 +2,11 @@
 Main FastAPI application entry point.
 """
 import asyncio
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.routes import generate
 from app.models import init_db
 from app.config import settings
@@ -43,6 +45,15 @@ app.add_middleware(
 
 # Include routers
 app.include_router(generate.router, prefix="/api", tags=["generate"])
+
+# Mount static files for serving generated ZIP files
+output_dir = Path("output")
+output_dir.mkdir(exist_ok=True)  # Ensure output directory exists
+app.mount(
+    "/downloads",
+    StaticFiles(directory=str(output_dir)),
+    name="downloads"
+)
 
 
 @app.get("/")

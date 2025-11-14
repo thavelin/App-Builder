@@ -212,7 +212,13 @@ export default function StatusPage() {
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
               <BuildResult
                 status={statusData.status}
-                downloadUrl={statusData.download_url}
+                downloadUrl={
+                  statusData.download_url
+                    ? statusData.download_url.startsWith('http')
+                      ? statusData.download_url
+                      : `${API_BASE_URL}${statusData.download_url}`
+                    : null
+                }
                 githubUrl={statusData.github_url}
                 deploymentUrl={statusData.deployment_url}
                 error={statusData.error}
