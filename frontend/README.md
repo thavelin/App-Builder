@@ -110,6 +110,15 @@ The frontend communicates with the backend API at `http://localhost:8000` by def
 
 - `POST /api/generate` - Start app generation
 - `GET /api/status/{job_id}` - Get job status (polled every 2 seconds)
+- `WebSocket /api/ws/status/{job_id}` - Real-time status updates
+
+### Error Handling
+
+The frontend provides user-friendly error messages for common issues:
+
+- **Missing Entry Point**: If a generated app is missing a runnable file (app.py, main.py, or index.js), a helpful alert is displayed suggesting the user try again or refine their prompt.
+- **Network Errors**: If the backend is unreachable, a clear message is shown asking the user to check if the backend is running.
+- **Build Failures**: All build errors are displayed with clear, actionable messages.
 
 ## Next Steps
 

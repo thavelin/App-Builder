@@ -29,21 +29,27 @@ def find_entrypoint(project_root: Path) -> Optional[Path]:
     return None
 
 
-def find_entrypoint_in_file_paths(file_paths: List[str]) -> Optional[str]:
+def find_entrypoint_in_file_paths(file_paths: List[str], require_root: bool = False) -> Optional[str]:
     """
     Find entry point by searching through file paths (for validation before extraction).
     
     Args:
         file_paths: List of file paths (as strings) to search
+        require_root: If True, only check for root-level entrypoints (default: False, searches recursively)
         
     Returns:
         First matching file path, or None if not found
     """
     for candidate in ENTRYPOINT_CANDIDATES:
         for file_path in file_paths:
-            # Check if the path ends with the candidate filename
-            if file_path.endswith(candidate) or f"/{candidate}" in file_path or f"\\{candidate}" in file_path:
-                return file_path
+            if require_root:
+                # Only check root-level files (no path separators)
+                if file_path == candidate or file_path.replace("\\", "/") == candidate:
+                    return file_path
+            else:
+                # Check if the path ends with the candidate filename (recursive)
+                if file_path.endswith(candidate) or f"/{candidate}" in file_path or f"\\{candidate}" in file_path:
+                    return file_path
     return None
 
 
@@ -198,19 +204,28 @@ class ExecutionService:
         """
         Validate that the generated app runs without critical errors.
         
+        Requires a root-level entry point (app.py, main.py, or index.js) for validation,
+        but the execution service can find nested entrypoints recursively as a fallback.
+        
         Returns a dictionary with validation results.
         """
-        # Search for entry point recursively in file paths
+        # First check for root-level entry point (required for generated projects)
         file_paths = list(project_files.keys())
-        entry_point_path = find_entrypoint_in_file_paths(file_paths)
+        root_entry_point = find_entrypoint_in_file_paths(file_paths, require_root=True)
         
-        if not entry_point_path:
+        if not root_entry_point:
+            # Also check recursively to provide better error message
+            any_entry_point = find_entrypoint_in_file_paths(file_paths, require_root=False)
+            
             # Log project structure for debugging
             root_files = [path.split('/')[0].split('\\')[0] for path in file_paths[:20]]  # Top-level dirs/files
             root_files_unique = sorted(set(root_files))[:10]  # Limit to 10 unique entries
             
             print(f"Entry point validation failed. Project has {len(file_paths)} files.", flush=True)
             print(f"Top-level directories/files: {root_files_unique}", flush=True)
+            
+            if any_entry_point:
+                print(f"Found nested entry point: {any_entry_point}, but root-level entry point is required.", flush=True)
             
             return {
                 "valid": False,
@@ -219,7 +234,7 @@ class ExecutionService:
                 "warnings": []
             }
         
-        print(f"Entry point found: {entry_point_path}", flush=True)
+        print(f"Root-level entry point found: {root_entry_point}", flush=True)
         
         # TODO: Implement additional validation
         # - Check for syntax errors
@@ -230,7 +245,7 @@ class ExecutionService:
         return {
             "valid": True,
             "errors": [],
-            "warnings": [f"Basic validation passed - entry point found: {entry_point_path}"]
+            "warnings": [f"Basic validation passed - entry point found: {root_entry_point}"]
         }
     
     async def zip_project_output(

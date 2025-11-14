@@ -62,7 +62,20 @@ export default function BuildResult({
           {isSuccess ? 'Build Complete!' : 'Build Failed'}
         </h2>
         {error && (
-          <p className="text-red-600 dark:text-red-400 mt-2">{error}</p>
+          <div className="mt-4">
+            {error.includes('No entry point found') || error.includes('missing a runnable file') ? (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                <p className="text-yellow-800 dark:text-yellow-200 font-medium mb-2">
+                  Missing Entry Point
+                </p>
+                <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+                  The generated app is missing a runnable file (e.g. app.py, main.py, or index.js). Please try again or refine your prompt.
+                </p>
+              </div>
+            ) : (
+              <p className="text-red-600 dark:text-red-400 mt-2">{error}</p>
+            )}
+          </div>
         )}
       </div>
 

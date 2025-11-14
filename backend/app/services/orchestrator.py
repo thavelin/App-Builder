@@ -72,11 +72,16 @@ class Orchestrator:
             await self._update_job_status(job_id, "in_progress", "validating")
             validation_result = await self.execution_service.validate_app_runs(project_files)
             if not validation_result["valid"]:
+                # Provide user-friendly error message for missing entrypoint
+                error_message = validation_result.get("error", "Validation failed")
+                if "No entry point found" in error_message:
+                    error_message = "The generated app is missing a runnable file (e.g. app.py, main.py, or index.js). Please try again or refine your prompt."
+                
                 await self._update_job_status(
                     job_id,
                     "failed",
                     "validating",
-                    error=validation_result.get("error", "Validation failed")
+                    error=error_message
                 )
                 return
         except Exception as e:

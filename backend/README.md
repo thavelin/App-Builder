@@ -221,6 +221,47 @@ The application uses SQLite with SQLModel for persistent job storage. The databa
 
 The backend supports real-time status updates via WebSocket connections. The frontend automatically connects to the WebSocket endpoint and receives updates as jobs progress. If WebSocket connection fails, the frontend falls back to polling.
 
+## Entry Point Detection
+
+The execution service uses recursive entry point detection to find runnable files in generated projects.
+
+### Entry Point Candidates
+
+The system searches for the following entry point files (in order of priority):
+- `app.py` - Python application entry point
+- `main.py` - Python main entry point
+- `index.js` - Node.js/JavaScript entry point
+
+### Detection Process
+
+1. **Recursive Search**: The system uses `Path.rglob()` to recursively search the entire project directory tree for entry point files.
+2. **First Match**: The first matching file found is used as the entry point.
+3. **Execution**: The execution method is determined by the file extension:
+   - `.py` files are executed using Python
+   - `.js` files are executed using Node.js (with npm install if package.json exists)
+
+### Requirements for Generated Projects
+
+**All generated projects must include at least one entry point file at the root level** (app.py, main.py, or index.js). This requirement is:
+- Enforced during validation before packaging
+- Communicated to the AI code generator in prompts
+- Checked recursively to support nested project structures
+
+### Example Project Structure
+
+A valid project might look like:
+```
+project/
+├── main.py          # Root entry point (required)
+├── app.py           # Application code
+├── backend/
+│   └── app.py       # Alternative entry point (will be found recursively)
+├── requirements.txt
+└── README.md
+```
+
+The system will find and use `main.py` as the entry point, but can also detect `backend/app.py` if no root entry point exists.
+
 ## Environment Variables
 
 - `OPENAI_API_KEY`: **Required** for OpenAI API calls (AI agent functionality)

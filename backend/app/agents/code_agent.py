@@ -27,6 +27,9 @@ class CodeAgent:
         """
         Generate code based on the task description using OpenAI.
         
+        The generated project must include a root-level entry point file (app.py, main.py, or index.js)
+        that can be used to run the application. This entry point is required for validation and execution.
+        
         Returns a dictionary with:
         - files: List of file paths and their contents
         - structure: Project structure information
@@ -34,22 +37,43 @@ class CodeAgent:
         """
         if not self.client:
             # Fallback to placeholder if OpenAI is not configured
+            # Include both app.py and root-level main.py for proper entrypoint
             return {
                 "files": [
                     {
                         "path": "app.py",
-                        "content": f"# Generated code for: {description}\n# OpenAI API key not configured"
+                        "content": f"""# Generated code for: {description}
+# OpenAI API key not configured
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {{"message": "Hello, World!"}}
+"""
+                    },
+                    {
+                        "path": "main.py",
+                        "content": """# Entry point at project root
+from app import app
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+"""
                     },
                     {
                         "path": "requirements.txt",
-                        "content": "# Dependencies\n# Add required packages here"
+                        "content": "# Dependencies\nfastapi\nuvicorn"
                     }
                 ],
                 "structure": {
                     "type": "python",
-                    "entry_point": "app.py"
+                    "entry_point": "main.py"
                 },
-                "dependencies": []
+                "dependencies": ["fastapi", "uvicorn"]
             }
         
         prompt = f"""You are an expert software developer. Generate a complete, working application based on this description:
@@ -75,6 +99,7 @@ Requirements:
 - Use best practices and clean code
 - Add helpful comments
 - Ensure the code is functional and well-structured
+- The root of the project must contain a file named app.py, main.py, or index.js which acts as the entry point for running the app.
 
 Return ONLY valid JSON, no markdown formatting or code blocks."""
 
@@ -105,29 +130,69 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
             
         except json.JSONDecodeError as e:
             print(f"Failed to parse OpenAI response as JSON: {e}")
-            # Fallback response
+            # Fallback response with root-level entrypoint
             return {
                 "files": [
                     {
                         "path": "app.py",
-                        "content": f"# Generated code for: {description}\n# Error parsing AI response\nprint('Hello, World!')"
+                        "content": f"""# Generated code for: {description}
+# Error parsing AI response
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {{"message": "Hello, World!"}}
+"""
+                    },
+                    {
+                        "path": "main.py",
+                        "content": """# Entry point at project root
+from app import app
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+"""
                     }
                 ],
-                "structure": {"type": "python", "entry_point": "app.py"},
-                "dependencies": []
+                "structure": {"type": "python", "entry_point": "main.py"},
+                "dependencies": ["fastapi", "uvicorn"]
             }
         except Exception as e:
             print(f"OpenAI API error in CodeAgent: {e}")
-            # Fallback response
+            # Fallback response with root-level entrypoint
             return {
                 "files": [
                     {
                         "path": "app.py",
-                        "content": f"# Generated code for: {description}\n# OpenAI API error occurred\nprint('Hello, World!')"
+                        "content": f"""# Generated code for: {description}
+# OpenAI API error occurred
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {{"message": "Hello, World!"}}
+"""
+                    },
+                    {
+                        "path": "main.py",
+                        "content": """# Entry point at project root
+from app import app
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+"""
                     }
                 ],
-                "structure": {"type": "python", "entry_point": "app.py"},
-                "dependencies": []
+                "structure": {"type": "python", "entry_point": "main.py"},
+                "dependencies": ["fastapi", "uvicorn"]
             }
     
     async def generate_supporting_files(self, project_type: str) -> List[Dict[str, str]]:
