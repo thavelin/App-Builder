@@ -4,13 +4,64 @@ FastAPI-based backend for the AI-powered multi-agent app builder application.
 
 ## Architecture
 
-The backend uses a multi-agent system to generate applications from natural language prompts:
+The backend uses a **spec-driven, multi-agent system** to generate applications from natural language prompts:
 
-- **Project Manager Agent**: Orchestrates the workflow and breaks down tasks
-- **Code Agent**: Generates application code and supporting files
-- **UI Agent**: Creates UI layouts and wireframe suggestions
-- **Usability Agent**: Reviews UX and user flow
-- **Reviewer Agent**: Scores completeness and approves/rejects results
+### Multi-Agent Workflow
+
+1. **Requirements Agent**: Extracts structured `AppSpec` from natural language prompts
+   - Handles complexity assessment and scope adjustment
+   - Creates a single source of truth for what the app should be
+
+2. **UI Agent**: Generates UX plan from `AppSpec`
+   - Creates concrete layouts, component lists, and navigation flow
+   - Provides actionable guidance for implementation
+
+3. **Code Agent**: Generates complete, runnable code
+   - Uses `AppSpec` and UX plan as inputs
+   - Implements all core features (no TODOs for main flows)
+   - Supports iterative refinement with repair briefs
+
+4. **Reviewer Agent**: Evaluates code against `AppSpec`
+   - Structured evaluation with multiple score dimensions
+   - Identifies red flags and missing features
+   - Determines if app is ready for users
+
+5. **Project Manager Agent**: Orchestrates the entire workflow
+   - Coordinates all agents using `AppSpec` as single source of truth
+   - Manages iteration loop with repair briefs
+   - Ensures quality through structured review process
+
+### AppSpec Schema
+
+The `AppSpec` is a generic, language-agnostic specification that represents what an app should be:
+
+- **goal**: Short summary of what the user wants
+- **user_type**: Who the app is for
+- **core_features**: High-level features the app must have
+- **entities**: Data entities with fields
+- **views**: Views/pages/screens needed
+- **stack_preferences**: Technology hints from user
+- **non_functional_requirements**: Mobile-first, dark mode, etc.
+- **constraints**: No external DB, static site, etc.
+- **complexity_level**: tiny/small/medium/ambitious
+- **scope_notes**: Notes about scope adjustments
+
+### Iteration Loop
+
+The system uses a robust iteration loop:
+
+1. Extract `AppSpec` from prompt
+2. Generate UX plan from `AppSpec`
+3. Generate code from `AppSpec` + UX plan
+4. Review code against `AppSpec`
+5. If not approved, create repair brief and iterate (up to 3 times)
+6. Return best available version with review notes
+
+### Telemetry
+
+Generation runs are logged to `logs/generation_runs.jsonl` for analysis:
+- Input: prompt, AppSpec summary
+- Output: reviewer scores, approval status, iteration count
 
 ## Project Structure
 
@@ -22,17 +73,20 @@ backend/
 │   │   └── generate.py      # API endpoints
 │   ├── agents/
 │   │   ├── project_manager.py
+│   │   ├── requirements_agent.py  # Extracts AppSpec from prompts
 │   │   ├── code_agent.py
 │   │   ├── ui_agent.py
 │   │   ├── usability_agent.py
 │   │   └── reviewer_agent.py
+│   ├── schemas/
+│   │   ├── app_spec.py      # AppSpec schema definition
+│   │   ├── request.py       # Pydantic request schemas
+│   │   └── response.py      # Pydantic response schemas
 │   ├── services/
 │   │   ├── orchestrator.py  # Multi-agent workflow controller
 │   │   ├── execution.py     # Sandbox/runner integration
-│   │   └── github.py        # GitHub API integration
-│   └── schemas/
-│       ├── request.py       # Pydantic request schemas
-│       └── response.py      # Pydantic response schemas
+│   │   ├── github.py        # GitHub API integration
+│   │   └── telemetry.py     # Run logging and analytics
 ├── tests/
 ├── requirements.txt
 └── README.md

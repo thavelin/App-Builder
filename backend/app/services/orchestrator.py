@@ -4,10 +4,12 @@ Orchestrator Service
 Multi-agent workflow controller that coordinates the entire generation process.
 """
 import asyncio
+import time
 from typing import Dict, Any, Optional, List
 from app.agents.project_manager import ProjectManagerAgent
 from app.services.execution import ExecutionService
 from app.services.github import GitHubService
+from app.services.telemetry import telemetry
 from app.storage import update_job, get_job
 
 
@@ -43,6 +45,7 @@ class Orchestrator:
         import traceback
         
         # Step 1: Design phase
+        start_time = time.time()
         try:
             print(f"\n{'='*60}", flush=True)
             print(f"Starting generation for job {job_id}", flush=True)
@@ -60,7 +63,21 @@ class Orchestrator:
                 attachments=attachments
             )
             
+            duration = time.time() - start_time
             print(f"[Job {job_id}] Design phase complete. Approved: {result.get('approved')}, Iterations: {result.get('iterations', 0)}", flush=True)
+            
+            # Log telemetry
+            app_spec_dict = result.get("app_spec", {})
+            review_dict = result.get("review", {})
+            telemetry.log_run(
+                job_id=job_id,
+                prompt=prompt,
+                app_spec=app_spec_dict,
+                review=review_dict,
+                approved=result.get("approved", False),
+                iterations=result.get("iterations", 0),
+                duration_seconds=duration
+            )
             
             if not result["approved"]:
                 print(f"[Job {job_id}] Generation rejected by reviewer after {result.get('iterations', 0)} iterations", flush=True)
