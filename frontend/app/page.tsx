@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import PromptForm, { Attachment } from '@/components/PromptForm'
 import { useToast } from '@/hooks/useToast'
@@ -11,7 +11,7 @@ import Navbar from '@/components/Navbar'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-export default function Home() {
+export default function Home(): React.JSX.Element {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const toast = useToast()
@@ -50,9 +50,10 @@ export default function Home() {
   }
 
   return (
-    <AuthGuard>
-      <Navbar />
-      <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+    <>
+      <AuthGuard>
+        <Navbar />
+        <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
         <div className="container mx-auto px-4 py-16">
           <div className="max-w-3xl mx-auto animate-fade-in">
             {/* Header */}
@@ -99,7 +100,8 @@ export default function Home() {
           </div>
         </div>
       </main>
-    </AuthGuard>
+      </AuthGuard>
+    </>
   )
 }
 
