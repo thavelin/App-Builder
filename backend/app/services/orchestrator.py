@@ -32,12 +32,13 @@ class Orchestrator:
         Main orchestration method for app generation.
         
         Updates job status throughout the process.
+        Each step is wrapped in try/except to prevent silent failures.
         """
+        import traceback
+        
+        # Step 1: Design phase
         try:
-            # Update status: design phase
             await self._update_job_status(job_id, "in_progress", "design")
-            
-            # Step 1: Project Manager coordinates generation
             result = await self.project_manager.coordinate_generation(prompt)
             
             if not result["approved"]:
@@ -48,16 +49,27 @@ class Orchestrator:
                     error="Generation did not meet quality standards"
                 )
                 return
-            
-            # Update status: coding phase
+        except Exception as e:
+            error_details = traceback.format_exc()
+            print(f"Error in design phase for job {job_id}:", flush=True)
+            print(error_details, flush=True)
+            await self._update_job_status(job_id, "failed", "design", error=f"Design phase error: {str(e)}")
+            return
+        
+        # Step 2: Prepare project files
+        try:
             await self._update_job_status(job_id, "in_progress", "coding")
-            
-            # Step 2: Prepare project files
             project_files = self._prepare_project_files(result["results"])
-            
-            # Step 3: Validate and package
+        except Exception as e:
+            error_details = traceback.format_exc()
+            print(f"Error preparing project files for job {job_id}:", flush=True)
+            print(error_details, flush=True)
+            await self._update_job_status(job_id, "failed", "coding", error=f"File preparation error: {str(e)}")
+            return
+        
+        # Step 3: Validate
+        try:
             await self._update_job_status(job_id, "in_progress", "validating")
-            
             validation_result = await self.execution_service.validate_app_runs(project_files)
             if not validation_result["valid"]:
                 await self._update_job_status(
@@ -67,67 +79,65 @@ class Orchestrator:
                     error=validation_result.get("error", "Validation failed")
                 )
                 return
-            
-            # Step 4: Create ZIP package
+        except Exception as e:
+            error_details = traceback.format_exc()
+            print(f"Error in validation phase for job {job_id}:", flush=True)
+            print(error_details, flush=True)
+            await self._update_job_status(job_id, "failed", "validating", error=f"Validation error: {str(e)}")
+            return
+        
+        # Step 4: Package
+        try:
             await self._update_job_status(job_id, "in_progress", "packaging")
             zip_path = await self.execution_service.zip_project_output(project_files, job_id)
-            
-            # Update with download URL (in production, upload to S3 or similar)
             await self._update_job_status(
                 job_id,
                 "in_progress",
                 "deploying",
                 download_url=f"/downloads/{job_id}.zip"
             )
-            
-            # Step 5: Push to GitHub (optional)
-            try:
-                github_result = await self.github_service.create_and_push_repo(
-                    project_files=project_files,
-                    job_id=job_id,
-                    prompt=prompt
+        except Exception as e:
+            error_details = traceback.format_exc()
+            print(f"Error in packaging phase for job {job_id}:", flush=True)
+            print(error_details, flush=True)
+            await self._update_job_status(job_id, "failed", "packaging", error=f"Packaging error: {str(e)}")
+            return
+        
+        # Step 5: GitHub integration (optional, non-blocking)
+        try:
+            github_result = await self.github_service.create_and_push_repo(
+                project_files=project_files,
+                job_id=job_id,
+                prompt=prompt
+            )
+            if github_result["success"]:
+                await self._update_job_status(
+                    job_id,
+                    "in_progress",
+                    "deploying",
+                    github_url=github_result.get("repo_url")
                 )
-                
-                if github_result["success"]:
-                    await self._update_job_status(
-                        job_id,
-                        "in_progress",
-                        "deploying",
-                        github_url=github_result.get("repo_url")
-                    )
-            except Exception as e:
-                # GitHub failure shouldn't block completion
-                print(f"GitHub integration failed: {e}", flush=True)
-            
-            # Step 6: Trigger deployment (placeholder)
-            # deployment_url = await self.github_service.trigger_deploy(job_id)
-            
-            # Complete
+        except Exception as e:
+            # GitHub failure shouldn't block completion
+            print(f"GitHub integration failed for job {job_id}: {e}", flush=True)
+        
+        # Step 6: Complete
+        try:
             await self._update_job_status(
                 job_id,
                 "complete",
                 "complete",
                 deployment_url=None  # TODO: Add actual deployment URL
             )
-            
         except Exception as e:
-            # Log the exception for debugging
-            import traceback
             error_details = traceback.format_exc()
-            print(f"Orchestrator error for job {job_id}:", flush=True)
+            print(f"Error completing job {job_id}:", flush=True)
             print(error_details, flush=True)
-            
-            # Always update job status to failed on exception
+            # Try to update status one more time
             try:
-                await self._update_job_status(
-                    job_id,
-                    "failed",
-                    "error",
-                    error=f"Internal error: {str(e)}"
-                )
-            except Exception as update_error:
-                # If even status update fails, log it
-                print(f"Failed to update job status after error: {update_error}", flush=True)
+                await self._update_job_status(job_id, "failed", "error", error=f"Completion error: {str(e)}")
+            except:
+                pass
     
     def _prepare_project_files(self, results: Dict[str, Any]) -> Dict[str, str]:
         """

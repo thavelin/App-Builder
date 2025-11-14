@@ -255,6 +255,71 @@ pytest --cov=app tests/
 ✅ Job history endpoint
 ✅ Type hints throughout
 ✅ Unit tests for storage and WebSocket
+✅ Automatic timeout for stuck jobs (15 minutes)
+✅ Comprehensive error logging with stack traces
+
+## Troubleshooting
+
+### Backend Not Starting
+
+1. **Check that uvicorn is running on the correct port:**
+   ```bash
+   # Default port is 8000
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+   
+   If port 8000 is in use, change it in the command and update `CORS_ORIGINS` in `.env` accordingly.
+
+2. **Verify environment variables are set:**
+   - Check that `.env` file exists in the `backend/` directory
+   - Ensure `OPENAI_API_KEY` is set (if you want AI features)
+   - Missing `OPENAI_API_KEY` will trigger fallback behavior but should not block progress
+   - Verify `CORS_ORIGINS` matches your frontend URL
+
+3. **Database issues:**
+   - The database (`app_builder.db`) is automatically created on first run
+   - If you encounter database errors, try deleting `app_builder.db` and restarting
+   - Ensure you have write permissions in the backend directory
+
+### Job Failures
+
+1. **Check console for tracebacks:**
+   - All errors are now logged with full stack traces to stdout/stderr
+   - Errors are also reflected in the `error` field returned by `/api/status/{job_id}`
+   - Look for messages like "Error in [phase] for job [job_id]"
+
+2. **Common failure reasons:**
+   - **Timeout**: Jobs stuck in `in_progress` for more than 15 minutes are automatically marked as failed
+   - **Validation errors**: Check that generated code has an entry point (app.py, main.py, or index.js)
+   - **OpenAI errors**: If OpenAI API key is invalid or quota exceeded, check console logs
+   - **Network errors**: Check that all external API calls (OpenAI, GitHub) are reachable
+
+3. **Job status not updating:**
+   - Check WebSocket connection status in frontend
+   - Verify backend is running and accessible
+   - Check browser console for connection errors
+   - Frontend automatically falls back to polling if WebSocket fails
+
+### Missing OpenAI API Key
+
+- The app will work without `OPENAI_API_KEY` but with limited functionality
+- Code generation will use placeholder responses
+- Reviewer will approve by default on first iteration with a warning
+- Check console for messages like "OpenAI not configured"
+
+### Debugging Tips
+
+1. **Enable verbose logging:**
+   - All errors include full stack traces in console output
+   - Check both stdout and stderr for error messages
+
+2. **Test endpoints directly:**
+   - Visit `http://localhost:8000/docs` for interactive API documentation
+   - Test `/api/status/{job_id}` endpoint directly to see job status
+
+3. **Check job history:**
+   - Use `/api/jobs` endpoint to see all jobs
+   - Check `created_at` and `updated_at` timestamps to identify stuck jobs
 
 ## Next Steps
 

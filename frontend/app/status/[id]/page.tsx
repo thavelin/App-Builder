@@ -93,19 +93,56 @@ export default function StatusPage() {
     },
     onError: () => {
       // Fallback to polling if WebSocket fails
-      if (statusData && (statusData.status === 'in_progress' || statusData.status === 'pending')) {
-        const pollInterval = setInterval(() => {
-          fetchStatus(0)
-          if (statusData?.status === 'complete' || statusData?.status === 'failed') {
-            clearInterval(pollInterval)
-          }
-        }, 3000)
-        
-        return () => clearInterval(pollInterval)
-      }
+      // Polling will stop automatically when status is complete or failed
     },
     reconnect: true,
   })
+
+  // Polling fallback (only if WebSocket is not connected and job is still in progress)
+  useEffect(() => {
+    // Only poll if WebSocket is not connected
+    if (isConnected) {
+      return
+    }
+    
+    // Only poll if job is still in progress
+    if (!statusData || (statusData.status !== 'in_progress' && statusData.status !== 'pending')) {
+      return
+    }
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/status/${jobId}`)
+        if (!response.ok) {
+          return
+        }
+        
+        const currentStatus = await response.json()
+        
+        // Stop polling if job is complete or failed
+        if (currentStatus.status === 'complete' || currentStatus.status === 'failed') {
+          clearInterval(pollInterval)
+          setStatusData(currentStatus)
+          setIsLoading(false)
+          
+          // Show toast notifications
+          if (currentStatus.status === 'complete') {
+            toast.success('Build completed successfully!')
+          } else if (currentStatus.status === 'failed') {
+            toast.error(currentStatus.error || 'Build failed')
+          }
+        } else {
+          // Update status but keep polling
+          setStatusData(currentStatus)
+        }
+      } catch (err) {
+        // Ignore polling errors, will retry on next interval
+        console.error('Polling error:', err)
+      }
+    }, 3000)
+    
+    return () => clearInterval(pollInterval)
+  }, [isConnected, statusData, jobId, toast])
 
   useEffect(() => {
     // Initial fetch

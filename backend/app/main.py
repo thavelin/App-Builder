@@ -1,12 +1,14 @@
 """
 Main FastAPI application entry point.
 """
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import generate
 from app.models import init_db
 from app.config import settings
+from app.services.job_timeout import start_job_timeout_monitor
 
 
 @asynccontextmanager
@@ -14,6 +16,10 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     # Startup: Initialize database
     await init_db()
+    
+    # Start background task to monitor stuck jobs
+    await start_job_timeout_monitor(timeout_minutes=15)
+    
     yield
     # Shutdown: Cleanup if needed
     pass

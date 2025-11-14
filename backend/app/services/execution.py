@@ -138,22 +138,30 @@ class ExecutionService:
         
         Returns a dictionary with validation results.
         """
-        # TODO: Implement actual validation
-        # - Check for syntax errors
-        # - Verify dependencies are specified
-        # - Run basic tests if applicable
-        # - Check for common issues
-        
-        # Placeholder validation
+        # Check for entry point
         has_entry_point = any(
             "app.py" in path or "main.py" in path or "index.js" in path
             for path in project_files.keys()
         )
         
+        if not has_entry_point:
+            return {
+                "valid": False,
+                "error": "No entry point found. Expected app.py, main.py, or index.js",
+                "errors": ["No entry point found"],
+                "warnings": []
+            }
+        
+        # TODO: Implement additional validation
+        # - Check for syntax errors
+        # - Verify dependencies are specified
+        # - Run basic tests if applicable
+        # - Check for common issues
+        
         return {
-            "valid": has_entry_point,
-            "errors": [] if has_entry_point else ["No entry point found"],
-            "warnings": ["This is a placeholder validation"]
+            "valid": True,
+            "errors": [],
+            "warnings": ["Basic validation passed - entry point found"]
         }
     
     async def zip_project_output(
