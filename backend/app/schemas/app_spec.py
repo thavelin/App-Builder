@@ -109,10 +109,18 @@ class AppSpec(BaseModel):
         default_factory=list,
         description="Explicitly out-of-scope features (for future iterations)"
     )
+    architect_spec: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Raw ARCHITECT_SPEC JSON (internal use, not part of standard spec)"
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert AppSpec to dictionary for serialization."""
-        return self.model_dump()
+        data = self.model_dump()
+        # Include architect_spec if present
+        if hasattr(self, 'architect_spec') and self.architect_spec:
+            data['architect_spec'] = self.architect_spec
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AppSpec":

@@ -33,11 +33,18 @@ class UIAgent:
         Input: AppSpec object
         Output: UX plan with views, layout sections, component lists, and navigation flow
         """
+        import time
+        start_time = time.time()
+        print(f"    [UIAgent] ===== Starting UX plan generation =====", flush=True)
         print(f"    [UIAgent] Generating UX plan from AppSpec...", flush=True)
+        print(f"    [UIAgent] Model: {self.model}", flush=True)
+        
         if not self.client:
             error_msg = "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
             print(f"    [UIAgent] ERROR: {error_msg}", flush=True)
             raise ValueError(error_msg)
+        
+        print(f"    [UIAgent] OpenAI client initialized", flush=True)
         
         system_prompt = """You are a UX/UI design expert. Your job is to create a concrete UX plan from an application specification.
 
@@ -95,6 +102,8 @@ Requirements:
 Return ONLY valid JSON, no markdown formatting or code blocks."""
 
         try:
+            print(f"    [UIAgent] Calling OpenAI API (model: {self.model}, max_tokens: 2000)...", flush=True)
+            api_start = time.time()
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -104,10 +113,15 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 temperature=0.5,
                 max_tokens=2000
             )
+            api_duration = time.time() - api_start
+            print(f"    [UIAgent] OpenAI API call completed in {api_duration:.2f}s", flush=True)
+            print(f"    [UIAgent] Response tokens: {response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 'unknown'}", flush=True)
             
             content = response.choices[0].message.content.strip()
+            print(f"    [UIAgent] Response length: {len(content)} characters", flush=True)
             
             # Remove markdown code blocks if present
+            print(f"    [UIAgent] Cleaning response (removing markdown if present)...", flush=True)
             if content.startswith("```json"):
                 content = content[7:]
             if content.startswith("```"):
@@ -116,12 +130,27 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 content = content[:-3]
             content = content.strip()
             
+            print(f"    [UIAgent] Parsing JSON response...", flush=True)
             result = json.loads(content)
+            duration = time.time() - start_time
+            print(f"    [UIAgent] ✓ UX plan generation complete in {duration:.2f}s", flush=True)
             print(f"    [UIAgent] ✓ Generated UX plan with {len(result.get('views', []))} views", flush=True)
+            print(f"    [UIAgent] ===== UX plan generation finished =====", flush=True)
             return result
             
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"    [UIAgent] Error generating UX plan: {e}, using fallback", flush=True)
+        except json.JSONDecodeError as e:
+            duration = time.time() - start_time
+            print(f"    [UIAgent] ERROR: JSON decode error after {duration:.2f}s: {e}", flush=True)
+            print(f"    [UIAgent] Response content (first 500 chars): {content[:500] if 'content' in locals() else 'N/A'}", flush=True)
+            print(f"    [UIAgent] Using fallback UX plan", flush=True)
+            return self._fallback_ux_plan(app_spec)
+        except Exception as e:
+            duration = time.time() - start_time
+            import traceback
+            print(f"    [UIAgent] ERROR: Exception after {duration:.2f}s: {e}", flush=True)
+            print(f"    [UIAgent] Traceback:", flush=True)
+            print(traceback.format_exc(), flush=True)
+            print(f"    [UIAgent] Using fallback UX plan", flush=True)
             return self._fallback_ux_plan(app_spec)
     
     def _fallback_ux_plan(self, app_spec: "AppSpec") -> Dict[str, Any]:

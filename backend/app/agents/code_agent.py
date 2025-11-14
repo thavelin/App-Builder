@@ -66,11 +66,18 @@ class CodeAgent:
         Returns:
             Dictionary with files, structure, and dependencies
         """
+        import time
+        start_time = time.time()
+        print(f"    [CodeAgent] ===== Starting IMPLEMENTER phase =====", flush=True)
         print(f"    [CodeAgent] Generating code from AppSpec...", flush=True)
+        print(f"    [CodeAgent] Model: {self.model}", flush=True)
+        
         if not self.client:
             error_msg = "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
             print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
             raise ValueError(error_msg)
+        
+        print(f"    [CodeAgent] OpenAI client initialized", flush=True)
         
         iteration_context = ""
         if previous_code and repair_brief:
@@ -89,21 +96,67 @@ You should:
 - Do NOT leave TODO comments for main user flows
 """
         
-        system_prompt = """You are an expert software developer. Your job is to generate complete, runnable code based on an application specification and UX plan.
+        system_prompt = """You are an expert software developer (IMPLEMENTER phase). Your job is to generate complete, runnable code based on ARCHITECT_SPEC.
 
 CRITICAL REQUIREMENTS:
-1. Generate COMPLETE, FUNCTIONAL code - no TODO comments for main features
-2. Always include a root-level entry point (app.py, main.py, index.js, or index.html)
-3. Respect stack preferences when possible, otherwise use sensible defaults
-4. Implement ALL core features from the spec
-5. Create a working MVP that covers the core end-to-end flow
-6. Use best practices and clean code
-7. Add helpful comments
-8. Ensure the project structure is clear and runnable
+1. Read and follow ARCHITECT_SPEC as the single source of truth
+2. Generate COMPLETE, FUNCTIONAL code - no TODO comments for main features
+3. Respect the stack and file list from ARCHITECT_SPEC
+4. For "static_html" stack, generate a single index.html with inline CSS and JavaScript
+5. Implement ALL features listed in ARCHITECT_SPEC.features
+6. Follow the layout, persistence, and UX details exactly as specified
+7. Use best practices and clean code
+8. Ensure the app is directly runnable (e.g., save as index.html and open in browser)
 
-For static sites, use index.html as entry point. For backend apps, use app.py or main.py."""
+The code must fully satisfy every requirement in ARCHITECT_SPEC."""
 
-        user_prompt = f"""Generate a complete, runnable application based on this specification:
+        # Get ARCHITECT_SPEC from app_spec if available
+        architect_spec = getattr(app_spec, 'architect_spec', None) or app_spec.to_dict().get('architect_spec')
+
+        if architect_spec:
+            # Use ARCHITECT_SPEC directly (new workflow)
+            user_prompt = f"""Generate a complete, runnable application based on this ARCHITECT_SPEC:
+
+ARCHITECT_SPEC:
+{json.dumps(architect_spec, indent=2)}
+{iteration_context}
+
+CRITICAL INSTRUCTIONS:
+- Stack: {architect_spec.get('stack', 'static_html')}
+- Files to generate: {', '.join(architect_spec.get('files', ['index.html']))}
+- For static_html: Generate ONE file (index.html) with inline <style> and <script>
+- Implement EVERY feature from the features list
+- Follow the exact layout structure from requirements.layout
+- Use the persistence method from requirements.persistence
+- Implement all UX details exactly as specified
+- Make it responsive as per requirements.responsiveness
+- Apply styling as per requirements.style
+
+Return a JSON object with this structure:
+{{
+    "files": [
+        {{"path": "filename.ext", "content": "complete file content here"}},
+        ...
+    ],
+    "structure": {{
+        "type": "python|node|react|html|etc",
+        "entry_point": "main file path (app.py, main.py, index.js, or index.html)"
+    }},
+    "dependencies": ["package1", "package2", ...]
+}}
+
+Requirements:
+- Generate ALL necessary files for a complete, runnable project
+- Include entry point at project root (app.py, main.py, index.js, or index.html)
+- Implement ALL features from ARCHITECT_SPEC.features - no stubs or TODOs for main flows
+- Follow ARCHITECT_SPEC exactly - layout, persistence, UX details
+- Make it functional and well-structured
+- For static_html, ensure index.html is complete and functional with inline CSS/JS
+
+Return ONLY valid JSON, no markdown formatting or code blocks."""
+        else:
+            # Fallback to old format
+            user_prompt = f"""Generate a complete, runnable application based on this specification:
 
 APP SPECIFICATION:
 {app_spec.summary()}
@@ -148,8 +201,14 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
 
         try:
             max_tokens = self._get_max_tokens()
-            print(f"    [CodeAgent] Using model: {self.model}, max_tokens: {max_tokens}", flush=True)
+            print(f"    [CodeAgent] Preparing API request: model={self.model}, max_tokens={max_tokens}", flush=True)
+            if architect_spec:
+                print(f"    [CodeAgent] Using ARCHITECT_SPEC workflow (stack: {architect_spec.get('stack', 'unknown')})", flush=True)
+            else:
+                print(f"    [CodeAgent] Using legacy AppSpec workflow", flush=True)
             
+            api_start = time.time()
+            print(f"    [CodeAgent] Calling OpenAI API...", flush=True)
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -159,10 +218,15 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 temperature=0.7,
                 max_tokens=max_tokens
             )
+            api_duration = time.time() - api_start
+            print(f"    [CodeAgent] OpenAI API call completed in {api_duration:.2f}s", flush=True)
+            print(f"    [CodeAgent] Response tokens: {response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 'unknown'}", flush=True)
             
             content = response.choices[0].message.content.strip()
+            print(f"    [CodeAgent] Response length: {len(content)} characters", flush=True)
             
             # Remove markdown code blocks if present
+            print(f"    [CodeAgent] Cleaning response (removing markdown if present)...", flush=True)
             if content.startswith("```json"):
                 content = content[7:]
             if content.startswith("```"):
@@ -171,24 +235,35 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 content = content[:-3]
             content = content.strip()
             
+            print(f"    [CodeAgent] Parsing JSON response...", flush=True)
             result = json.loads(content)
+            print(f"    [CodeAgent] JSON parsed successfully", flush=True)
             
             # Validate entry point exists
             files = result.get("files", [])
             entry_point = result.get("structure", {}).get("entry_point", "")
+            print(f"    [CodeAgent] Generated {len(files)} files, entry point: {entry_point}", flush=True)
             if entry_point and not any(f.get("path") == entry_point for f in files):
-                print(f"    [CodeAgent] Warning: Entry point {entry_point} not found in generated files", flush=True)
+                print(f"    [CodeAgent] WARNING: Entry point {entry_point} not found in generated files", flush=True)
             
             file_count = len(files)
+            duration = time.time() - start_time
+            print(f"    [CodeAgent] ✓ IMPLEMENTER phase complete in {duration:.2f}s", flush=True)
             print(f"    [CodeAgent] ✓ Generated {file_count} files", flush=True)
+            print(f"    [CodeAgent] ===== IMPLEMENTER phase finished =====", flush=True)
             return result
             
         except json.JSONDecodeError as e:
+            duration = time.time() - start_time
             error_msg = f"Failed to parse OpenAI response as JSON: {e}"
-            print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
+            print(f"    [CodeAgent] ERROR: JSON decode error after {duration:.2f}s: {error_msg}", flush=True)
+            print(f"    [CodeAgent] Response content (first 500 chars): {content[:500] if 'content' in locals() else 'N/A'}", flush=True)
             raise ValueError(error_msg) from e
         except Exception as e:
+            duration = time.time() - start_time
             error_str = str(e)
+            import traceback
+            print(f"    [CodeAgent] ERROR: Exception after {duration:.2f}s: {error_str}", flush=True)
             # Check for context length errors
             if "context_length_exceeded" in error_str.lower() or "maximum context length" in error_str.lower():
                 error_msg = (
@@ -198,13 +273,13 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 )
                 print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
                 raise ValueError(error_msg) from e
-            # Check for API key errors
             elif "api key" in error_str.lower() or "authentication" in error_str.lower() or "unauthorized" in error_str.lower():
                 error_msg = "OpenAI API authentication failed. Please check your OPENAI_API_KEY."
                 print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
                 raise ValueError(error_msg) from e
-            # Other errors
             else:
+                print(f"    [CodeAgent] Traceback:", flush=True)
+                print(traceback.format_exc(), flush=True)
                 error_msg = f"OpenAI API error: {error_str}"
                 print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
                 raise ValueError(error_msg) from e

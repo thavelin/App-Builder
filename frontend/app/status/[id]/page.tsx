@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import LoadingSteps from '@/components/LoadingSteps'
 import BuildResult from '@/components/BuildResult'
@@ -32,6 +32,8 @@ export default function StatusPage() {
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
   const { token } = useAuth()
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Fetch initial status
   const fetchStatus = async (): Promise<void> => {
@@ -86,58 +88,110 @@ export default function StatusPage() {
     reconnect: true,
   })
 
+  // Stop polling when WebSocket is working
+  useEffect(() => {
+    if (isConnected && hasReceivedMessage) {
+      // WebSocket is working, stop polling
+      if (pollingIntervalRef.current) {
+        console.log('[StatusPage] WebSocket working, stopping polling')
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current)
+        pollingTimeoutRef.current = null
+      }
+    }
+  }, [isConnected, hasReceivedMessage])
+
   // Polling fallback - only if WebSocket is not working
   useEffect(() => {
-    // Only poll if WebSocket is not connected or not receiving messages
-    // AND job is still in progress
-    if ((isConnected && hasReceivedMessage) || 
-        !statusData || 
-        (statusData.status !== 'in_progress' && statusData.status !== 'pending')) {
+    // If WebSocket is connected and receiving messages, don't poll
+    if (isConnected && hasReceivedMessage) {
       return
     }
     
-    console.log(`[StatusPage] WebSocket not working, using polling fallback`)
+    // If job is complete or failed, don't poll
+    if (statusData && 
+        statusData.status !== 'in_progress' && 
+        statusData.status !== 'pending') {
+      return
+    }
     
-    const pollIntervalId = setInterval(async () => {
-      try {
-        const currentStatus = await fetchWithRetry(
-          `${API_BASE_URL}/api/status/${jobId}`,
-          {
-            headers: getAuthHeaders(token),
-          }
-        )
-        
-        console.log(`[StatusPage] Polling update: status=${currentStatus.status}, step=${currentStatus.step}`)
-        
-        // Stop polling if job is complete or failed
-        if (currentStatus.status === 'complete' || currentStatus.status === 'failed') {
-          clearInterval(pollIntervalId)
-          setStatusData(currentStatus)
-          setIsLoading(false)
-          
-          // Show toast notifications
-          if (currentStatus.status === 'complete') {
-            toast.success('Build completed successfully!')
-          } else if (currentStatus.status === 'failed') {
-            toast.error(currentStatus.error || 'Build failed')
-          }
-        } else {
-          // Update status but keep polling
-          if (!statusData || 
-              statusData.status !== currentStatus.status || 
-              statusData.step !== currentStatus.step) {
-            setStatusData(currentStatus)
-          }
-        }
-      } catch (err) {
-        // Ignore polling errors, will retry on next interval
-        console.error('[StatusPage] Polling error:', err)
+    // Clear any existing polling setup
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current)
+      pollingTimeoutRef.current = null
+    }
+    
+    // Wait a bit before starting polling to give WebSocket a chance
+    // Only start polling if WebSocket hasn't connected after 3 seconds
+    pollingTimeoutRef.current = setTimeout(() => {
+      // Double-check WebSocket status before starting polling
+      if (isConnected && hasReceivedMessage) {
+        return
       }
-    }, 5000) // Poll every 5 seconds as fallback
+      
+      console.log(`[StatusPage] WebSocket not working after timeout, using polling fallback`)
+      
+      pollingIntervalRef.current = setInterval(async () => {
+        try {
+          const currentStatus = await fetchWithRetry(
+            `${API_BASE_URL}/api/status/${jobId}`,
+            {
+              headers: getAuthHeaders(token),
+            }
+          )
+          
+          console.log(`[StatusPage] Polling update: status=${currentStatus.status}, step=${currentStatus.step}`)
+          
+          // Stop polling if job is complete or failed
+          if (currentStatus.status === 'complete' || currentStatus.status === 'failed') {
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current)
+              pollingIntervalRef.current = null
+            }
+            setStatusData(currentStatus)
+            setIsLoading(false)
+            
+            // Show toast notifications
+            if (currentStatus.status === 'complete') {
+              toast.success('Build completed successfully!')
+            } else if (currentStatus.status === 'failed') {
+              toast.error(currentStatus.error || 'Build failed')
+            }
+          } else {
+            // Update status but keep polling
+            setStatusData(prev => {
+              if (!prev || 
+                  prev.status !== currentStatus.status || 
+                  prev.step !== currentStatus.step) {
+                return currentStatus
+              }
+              return prev
+            })
+          }
+        } catch (err) {
+          // Ignore polling errors, will retry on next interval
+          console.error('[StatusPage] Polling error:', err)
+        }
+      }, 5000) // Poll every 5 seconds as fallback
+    }, 3000) // Wait 3 seconds before starting polling
     
     return () => {
-      console.log('[StatusPage] Stopping polling')
-      clearInterval(pollIntervalId)
+      if (pollingIntervalRef.current) {
+        console.log('[StatusPage] Stopping polling')
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current)
+        pollingTimeoutRef.current = null
+      }
     }
   }, [isConnected, hasReceivedMessage, statusData, jobId, token, toast])
 

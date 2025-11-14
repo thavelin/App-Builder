@@ -41,82 +41,131 @@ class RequirementsAgent:
         Returns:
             AppSpec object representing the structured requirements
         """
+        import time
+        start_time = time.time()
+        print(f"    [RequirementsAgent] ===== Starting ARCHITECT phase =====", flush=True)
         print(f"    [RequirementsAgent] Extracting spec from prompt...", flush=True)
+        print(f"    [RequirementsAgent] Prompt length: {len(prompt)} characters", flush=True)
+        print(f"    [RequirementsAgent] Model: {self.model}", flush=True)
         
         if not self.client:
-            print("    [RequirementsAgent] OpenAI not configured, using fallback spec", flush=True)
+            print("    [RequirementsAgent] ERROR: OpenAI not configured, using fallback spec", flush=True)
             return self._fallback_spec(prompt)
+        
+        print(f"    [RequirementsAgent] OpenAI client initialized, preparing API request...", flush=True)
         
         # Build context about attachments if provided
         attachment_context = ""
         if attachments:
             attachment_context = f"\n\nUser provided {len(attachments)} attachment(s):\n"
             for att in attachments:
-                attachment_context += f"- {att.get('name')} ({att.get('type')})\n"
+                # Handle both Pydantic models and dicts
+                # Check if it's a Pydantic model by checking for model_dump method or name attribute
+                if hasattr(att, 'model_dump') or (hasattr(att, 'name') and not isinstance(att, dict)):
+                    # Pydantic model - use attribute access
+                    try:
+                        att_name = att.name
+                        att_type = att.type
+                    except AttributeError:
+                        # Fallback: try to convert to dict
+                        if hasattr(att, 'model_dump'):
+                            att_dict = att.model_dump()
+                            att_name = att_dict.get('name', 'unknown')
+                            att_type = att_dict.get('type', 'unknown')
+                        else:
+                            att_name = 'unknown'
+                            att_type = 'unknown'
+                elif isinstance(att, dict):
+                    # Dictionary - use .get()
+                    att_name = att.get('name', 'unknown')
+                    att_type = att.get('type', 'unknown')
+                else:
+                    # Unknown type - try attribute access first, then dict access
+                    try:
+                        att_name = getattr(att, 'name', 'unknown')
+                        att_type = getattr(att, 'type', 'unknown')
+                    except:
+                        att_name = 'unknown'
+                        att_type = 'unknown'
+                attachment_context += f"- {att_name} ({att_type})\n"
             attachment_context += "\nConsider these attachments when understanding requirements, but focus on the text prompt as primary source."
         
-        system_prompt = """You are an expert software architect and requirements analyst. Your job is to extract structured requirements from natural language prompts.
+        system_prompt = """You are an expert software architect (ARCHITECT phase). Your job is to expand the user's APP_BRIEF into a detailed ARCHITECT_SPEC JSON.
 
-You must:
-1. Identify the core goal and purpose of the application
-2. Determine who the target users are
-3. Extract core features (high-level capabilities)
-4. Identify data entities (things the app manages)
-5. Define views/pages/screens needed
-6. Note any technology preferences mentioned
-7. Identify non-functional requirements (mobile-first, dark mode, etc.)
-8. Note constraints (no database, static site, etc.)
-9. Assess complexity level (tiny/small/medium/ambitious)
-10. If the request is extremely ambitious, propose a realistic MVP scope
+You must produce a concrete, structured spec that includes:
+1. Stack choice (default to "static_html" for simple one-page apps unless clearly specified otherwise)
+2. File list (e.g. ["index.html"] for static HTML apps)
+3. Requirements (persistence method, layout structure, responsiveness, styling constraints)
+4. Data model (entities with fields and types)
+5. Features (explicit user stories like "create a new note", "edit note title/body", etc.)
+6. UX details (structured breakdown of each view: navigation, components, empty states, actions)
 
-Be practical and reasonable. For vague prompts, infer sensible defaults. For overly ambitious requests, scope down to a solid MVP that covers the core end-to-end flow.
+Be concrete and opinionated. Infer sensible defaults if the user is vague. Scope down overly ambitious requests to a realistic MVP.
 
-Always return valid JSON matching the AppSpec schema."""
+Output the spec between ARCHITECT_SPEC_START and ARCHITECT_SPEC_END markers."""
 
-        user_prompt = f"""Extract structured requirements from this user prompt:
+        user_prompt = f"""Expand this APP_BRIEF into a detailed ARCHITECT_SPEC:
 
+APP_BRIEF:
 {prompt}{attachment_context}
 
-Return a JSON object with this exact structure:
+Output ARCHITECT_SPEC_START followed by a JSON object with this exact structure:
+
+IMPORTANT: You MUST output the JSON between ARCHITECT_SPEC_START and ARCHITECT_SPEC_END markers.
 {{
-    "goal": "Short summary of what the user wants",
-    "user_type": "Who the app is for",
-    "core_features": ["feature1", "feature2", ...],
-    "entities": [
-        {{
-            "name": "EntityName",
-            "fields": [{{"name": "fieldName", "type": "string|number|boolean|date|etc"}}],
-            "description": "What this entity represents"
+    "stack": "static_html",
+    "files": ["index.html"],
+    "requirements": {{
+        "persistence": "localStorage",
+        "layout": "sidebar (notes list) + main panel (selected note)",
+        "responsiveness": "works well from 375px width up to desktop",
+        "style": "minimal, clean, light theme, system font"
+    }},
+    "data_model": {{
+        "note": {{
+            "id": "string",
+            "title": "string",
+            "body": "string",
+            "updatedAt": "number (timestamp)"
         }}
+    }},
+    "features": [
+        "Create a new note",
+        "Edit note title and body",
+        "Delete a note with confirmation",
+        "Highlight selected note in sidebar",
+        "Sort notes by last updated descending",
+        "Show an empty state when there are no notes",
+        "Persist notes in localStorage"
     ],
-    "views": [
-        {{
-            "name": "ViewName",
-            "purpose": "What this view is for",
-            "primary_actions": ["action1", "action2"],
-            "description": "Additional details"
-        }}
-    ],
-    "stack_preferences": ["technology1", "technology2"] or null,
-    "non_functional_requirements": ["requirement1", "requirement2"],
-    "constraints": ["constraint1", "constraint2"],
-    "complexity_level": "tiny|small|medium|ambitious",
-    "scope_notes": "Notes about scope adjustments if any, or null",
-    "in_scope": ["explicitly in-scope feature1", "feature2"],
-    "out_of_scope": ["explicitly out-of-scope feature1", "feature2"]
+    "ux_details": {{
+        "sidebar": [
+            "List of notes with title and last-updated date",
+            "Clicking a note selects it"
+        ],
+        "main_panel": [
+            "Editable title input",
+            "Large textarea for body",
+            "Delete button",
+            "Empty state message if no notes"
+        ]
+    }}
 }}
 
 Guidelines:
-- If the prompt is vague, infer reasonable defaults (e.g., if no user type mentioned, use "general users")
-- If the request is extremely ambitious (e.g., "build a full SaaS like Notion"), scope it down to a realistic MVP
-- Always include at least one view (even if just "Home" or "Main")
-- For CRUD apps, entities should match the data being managed
-- Complexity: "tiny" = single page, "small" = few features, "medium" = multiple features, "ambitious" = complex (will be scoped down)
-- Be explicit about what's in-scope vs out-of-scope
+- Choose "static_html" for simple apps unless the brief clearly asks for a framework
+- Be concrete about layout (e.g., "sidebar + main panel", "single column", "grid layout")
+- Specify persistence method (localStorage, IndexedDB, or "none" for stateless apps)
+- List ALL features as explicit user stories
+- Break down UX details by view/component with specific elements
+- Infer sensible defaults if the user is vague
+- Scope down ambitious requests to a realistic MVP
 
-Return ONLY valid JSON, no markdown formatting or code blocks."""
+End with ARCHITECT_SPEC_END. Return ONLY the JSON between the markers, no markdown code blocks."""
 
         try:
+            print(f"    [RequirementsAgent] Calling OpenAI API (model: {self.model}, max_tokens: 2000)...", flush=True)
+            api_start = time.time()
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -126,19 +175,44 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 temperature=0.3,  # Lower temperature for more consistent extraction
                 max_tokens=2000
             )
+            api_duration = time.time() - api_start
+            print(f"    [RequirementsAgent] OpenAI API call completed in {api_duration:.2f}s", flush=True)
+            print(f"    [RequirementsAgent] Response tokens: {response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 'unknown'}", flush=True)
             
             content = response.choices[0].message.content.strip()
+            print(f"    [RequirementsAgent] Response length: {len(content)} characters", flush=True)
             
-            # Remove markdown code blocks if present
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+            # Extract ARCHITECT_SPEC from between markers
+            start_marker = "ARCHITECT_SPEC_START"
+            end_marker = "ARCHITECT_SPEC_END"
             
-            spec_dict = json.loads(content)
+            print(f"    [RequirementsAgent] Looking for markers: {start_marker} and {end_marker}", flush=True)
+            if start_marker in content and end_marker in content:
+                print(f"    [RequirementsAgent] Found both markers, extracting JSON...", flush=True)
+                start_idx = content.find(start_marker) + len(start_marker)
+                end_idx = content.find(end_marker)
+                content = content[start_idx:end_idx].strip()
+            else:
+                print(f"    [RequirementsAgent] WARNING: Markers not found, attempting to parse directly...", flush=True)
+                # Fallback: remove markdown code blocks if present
+                if content.startswith("```json"):
+                    content = content[7:]
+                if content.startswith("```"):
+                    content = content[3:]
+                if content.endswith("```"):
+                    content = content[:-3]
+                content = content.strip()
+            
+            print(f"    [RequirementsAgent] Parsing JSON (length: {len(content)} chars)...", flush=True)
+            architect_spec = json.loads(content)
+            print(f"    [RequirementsAgent] JSON parsed successfully", flush=True)
+            
+            # Store the raw ARCHITECT_SPEC in the spec for the Code Agent to use
+            # Convert ARCHITECT_SPEC to AppSpec format for backward compatibility
+            spec_dict = self._convert_architect_spec_to_app_spec(architect_spec, prompt)
+            
+            # Store raw ARCHITECT_SPEC as metadata
+            spec_dict["architect_spec"] = architect_spec
             
             # Convert complexity_level string to enum
             if isinstance(spec_dict.get("complexity_level"), str):
@@ -161,12 +235,108 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 spec_dict["core_features"] = ["Basic functionality"]
             
             spec = AppSpec(**spec_dict)
-            print(f"    [RequirementsAgent] ✓ Extracted spec: {spec.complexity_level.value} complexity, {len(spec.core_features)} features, {len(spec.views)} views", flush=True)
+            duration = time.time() - start_time
+            print(f"    [RequirementsAgent] ✓ ARCHITECT phase complete in {duration:.2f}s", flush=True)
+            print(f"    [RequirementsAgent] ✓ Extracted ARCHITECT_SPEC: {architect_spec.get('stack', 'unknown')} stack, {len(architect_spec.get('features', []))} features", flush=True)
+            print(f"    [RequirementsAgent] ===== ARCHITECT phase finished =====", flush=True)
             return spec
-            
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"    [RequirementsAgent] Error extracting spec: {e}, using fallback", flush=True)
+
+        except json.JSONDecodeError as e:
+            duration = time.time() - start_time
+            print(f"    [RequirementsAgent] ERROR: JSON decode error after {duration:.2f}s: {e}", flush=True)
+            print(f"    [RequirementsAgent] Response content (first 500 chars): {content[:500] if 'content' in locals() else 'N/A'}", flush=True)
+            print(f"    [RequirementsAgent] Using fallback spec", flush=True)
             return self._fallback_spec(prompt)
+        except Exception as e:
+            duration = time.time() - start_time
+            import traceback
+            print(f"    [RequirementsAgent] ERROR: Exception after {duration:.2f}s: {e}", flush=True)
+            print(f"    [RequirementsAgent] Traceback:", flush=True)
+            print(traceback.format_exc(), flush=True)
+            print(f"    [RequirementsAgent] Using fallback spec", flush=True)
+            return self._fallback_spec(prompt)
+    
+    def _convert_architect_spec_to_app_spec(self, architect_spec: Dict[str, Any], prompt: str) -> Dict[str, Any]:
+        """Convert ARCHITECT_SPEC format to AppSpec format."""
+        # Extract data model entities
+        entities = []
+        data_model = architect_spec.get("data_model", {})
+        for entity_name, fields in data_model.items():
+            entity_fields = []
+            if isinstance(fields, dict):
+                for field_name, field_type in fields.items():
+                    entity_fields.append({
+                        "name": field_name,
+                        "type": str(field_type) if not isinstance(field_type, str) else field_type
+                    })
+            entities.append({
+                "name": entity_name,
+                "fields": entity_fields,
+                "description": f"Entity representing {entity_name}"
+            })
+        
+        # Extract views from ux_details
+        views = []
+        ux_details = architect_spec.get("ux_details", {})
+        for view_name, view_components in ux_details.items():
+            primary_actions = []
+            if isinstance(view_components, list):
+                # Extract actions from component descriptions
+                for comp in view_components:
+                    if isinstance(comp, str) and any(action in comp.lower() for action in ["button", "click", "action", "delete", "edit", "create", "save"]):
+                        primary_actions.append(comp)
+            
+            views.append({
+                "name": view_name.replace("_", " ").title(),
+                "purpose": f"View for {view_name}",
+                "primary_actions": primary_actions[:3],  # Limit to 3
+                "description": "; ".join(view_components) if isinstance(view_components, list) else str(view_components)
+            })
+        
+        # If no views extracted, create a default one
+        if not views:
+            views = [{"name": "Home", "purpose": "Main application view", "primary_actions": [], "description": ""}]
+        
+        # Determine complexity based on features count
+        features = architect_spec.get("features", [])
+        if len(features) <= 3:
+            complexity = "tiny"
+        elif len(features) <= 6:
+            complexity = "small"
+        elif len(features) <= 10:
+            complexity = "medium"
+        else:
+            complexity = "ambitious"
+        
+        # Extract stack preferences
+        stack = architect_spec.get("stack", "static_html")
+        stack_preferences = [stack] if stack != "static_html" else None
+        
+        # Extract constraints from requirements
+        requirements = architect_spec.get("requirements", {})
+        constraints = []
+        if requirements.get("persistence") == "none":
+            constraints.append("No persistence")
+        if stack == "static_html":
+            constraints.append("Static site only")
+        
+        return {
+            "goal": prompt[:200] if len(prompt) > 200 else prompt,
+            "user_type": "general users",
+            "core_features": features,
+            "entities": entities,
+            "views": views,
+            "stack_preferences": stack_preferences,
+            "non_functional_requirements": [
+                requirements.get("responsiveness", ""),
+                requirements.get("style", "")
+            ] if requirements else [],
+            "constraints": constraints,
+            "complexity_level": complexity,
+            "scope_notes": None,
+            "in_scope": features,
+            "out_of_scope": []
+        }
     
     def _fallback_spec(self, prompt: str) -> AppSpec:
         """Generate a basic fallback spec when OpenAI is not available."""

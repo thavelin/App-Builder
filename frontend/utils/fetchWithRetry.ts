@@ -8,6 +8,7 @@
 export interface FetchWithRetryOptions extends RequestInit {
   maxRetries?: number
   retryDelay?: number
+  timeout?: number // Timeout in milliseconds
   onRetry?: (attempt: number, error: Error) => void
   onProgress?: (message: string) => void
 }
@@ -39,6 +40,7 @@ export async function fetchWithRetry(
   const {
     maxRetries = 3,
     retryDelay = 1000,
+    timeout = 30000, // Default 30 second timeout
     onRetry,
     onProgress,
     ...fetchOptions
@@ -52,41 +54,58 @@ export async function fetchWithRetry(
         onProgress(`Retrying... (attempt ${attempt + 1}/${maxRetries + 1})`)
       }
 
-      const response = await fetch(url, fetchOptions)
+      // Create AbortController for timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '')
-        const error = new FetchError(
-          `HTTP ${response.status}: ${errorText || response.statusText || 'Request failed'}`,
-          response.status,
-          response.statusText,
-          response
-        )
+      try {
+        const response = await fetch(url, {
+          ...fetchOptions,
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
 
-        // Don't retry on 4xx client errors (except 408, 429)
-        if (response.status >= 400 && response.status < 500 && 
-            response.status !== 408 && response.status !== 429) {
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '')
+          const error = new FetchError(
+            `HTTP ${response.status}: ${errorText || response.statusText || 'Request failed'}`,
+            response.status,
+            response.statusText,
+            response
+          )
+
+          // Don't retry on 4xx client errors (except 408, 429)
+          if (response.status >= 400 && response.status < 500 && 
+              response.status !== 408 && response.status !== 429) {
+            throw error
+          }
+
+          // Retry on server errors and specific client errors
+          if (attempt < maxRetries) {
+            lastError = error
+            if (onRetry) {
+              onRetry(attempt + 1, error)
+            }
+            // Exponential backoff with jitter
+            const delay = retryDelay * Math.pow(2, attempt) + Math.random() * 1000
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+
           throw error
         }
 
-        // Retry on server errors and specific client errors
-        if (attempt < maxRetries) {
-          lastError = error
-          if (onRetry) {
-            onRetry(attempt + 1, error)
-          }
-          // Exponential backoff with jitter
-          const delay = retryDelay * Math.pow(2, attempt) + Math.random() * 1000
-          await new Promise(resolve => setTimeout(resolve, delay))
-          continue
+        // Success - parse and return JSON
+        const data = await response.json()
+        return data
+      } catch (fetchError) {
+        clearTimeout(timeoutId)
+        // Re-throw if it was an abort (timeout)
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new Error(`Request timeout after ${timeout}ms`)
         }
-
-        throw error
+        throw fetchError
       }
-
-      // Success - parse and return JSON
-      const data = await response.json()
-      return data
 
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))

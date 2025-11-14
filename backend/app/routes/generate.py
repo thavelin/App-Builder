@@ -113,6 +113,13 @@ async def generate_app(
         print(f"[Generate] Job {job_id} - no attachments", flush=True)
     
     # Initialize job status with user_id
+    print(f"\n[Generate] ===== NEW GENERATION REQUEST =====", flush=True)
+    print(f"[Generate] Job ID: {job_id}", flush=True)
+    print(f"[Generate] User ID: {current_user.id}", flush=True)
+    print(f"[Generate] Prompt: {request.prompt[:200]}{'...' if len(request.prompt) > 200 else ''}", flush=True)
+    print(f"[Generate] Review threshold: {request.review_threshold}", flush=True)
+    print(f"[Generate] Attachments: {len(request.attachments) if request.attachments else 0}", flush=True)
+    
     await set_job(job_id, {
         "status": "pending",
         "step": "initializing",
@@ -135,14 +142,31 @@ async def generate_app(
     })
     
     # Start generation in background
+    print(f"[Generate] Creating Orchestrator instance...", flush=True)
     orchestrator = Orchestrator(manager)
+    print(f"[Generate] Starting background task for job {job_id}...", flush=True)
+    
+    # Convert Pydantic Attachment models to dictionaries for background task
+    attachments_dict = None
+    if request.attachments:
+        attachments_dict = [
+            {
+                "name": att.name,
+                "type": att.type,
+                "content": att.content
+            }
+            for att in request.attachments
+        ]
+    
     background_tasks.add_task(
         orchestrator.generate_app,
         job_id,
         request.prompt,
         review_threshold=request.review_threshold,
-        attachments=request.attachments
+        attachments=attachments_dict
     )
+    print(f"[Generate] Background task started. Returning job_id to client.", flush=True)
+    print(f"[Generate] ===== REQUEST HANDLED =====", flush=True)
     
     return GenerateResponse(job_id=job_id)
 

@@ -39,10 +39,17 @@ class ReviewerAgent:
         
         Returns a structured evaluation with scores and actionable feedback.
         """
-        print(f"    [ReviewerAgent] Reviewing against AppSpec (iteration {iteration + 1})...", flush=True)
+        import time
+        start_time = time.time()
+        print(f"    [ReviewerAgent] ===== Starting REVIEWER phase (iteration {iteration + 1}) =====", flush=True)
+        print(f"    [ReviewerAgent] Reviewing against AppSpec...", flush=True)
+        print(f"    [ReviewerAgent] Model: {self.model}", flush=True)
+        
         if not self.client:
-            print("    [ReviewerAgent] OpenAI not configured, using fallback approval", flush=True)
+            print("    [ReviewerAgent] ERROR: OpenAI not configured, using fallback approval", flush=True)
             return self._fallback_review(app_spec, iteration)
+        
+        print(f"    [ReviewerAgent] OpenAI client initialized", flush=True)
         
         # Prepare code summary
         files = code_result.get("files", [])
@@ -58,19 +65,48 @@ class ReviewerAgent:
             if "TODO" in content.upper() or "FIXME" in content.upper():
                 todo_count += 1
         
-        system_prompt = """You are a code review expert. Your job is to evaluate a generated application against its specification.
+        system_prompt = """You are a code review expert (REVIEWER phase). Your job is to evaluate a generated application against ARCHITECT_SPEC.
 
 You must:
-1. Evaluate how well the code matches the AppSpec
-2. Check functional completeness
-3. Assess UI/UX reasonableness
-4. Identify obvious red flags (missing core features, no UI, TODOs in main flows, etc.)
-5. Provide actionable improvement suggestions
-6. Determine if it's ready for users (good enough as first version)
+1. Score requirements_match (0-10): How well does the code match ARCHITECT_SPEC?
+2. Score functional_completeness (0-10): Are ALL features from ARCHITECT_SPEC.features implemented?
+3. Score ui_ux_reasonableness (0-10): Is the UI polished, responsive, and matches ARCHITECT_SPEC.ux_details?
+4. Identify obvious_red_flags (missing UI, missing features, TODOs in main flows, wrong stack, etc.)
+5. List missing_core_features if any features from ARCHITECT_SPEC.features are not implemented
+6. Determine ready_for_user (true only if score ≥8/10 on each category AND no critical red flags)
 
-Be reasonable - a good MVP with some enhancements possible should pass. Only reject if there are critical issues."""
+Be strict but fair. Approve only if the app fully satisfies ARCHITECT_SPEC. Provide concrete PATCH_PLAN if fixes are needed."""
 
-        user_prompt = f"""Review this generated application against its specification:
+        # Get ARCHITECT_SPEC from app_spec if available
+        architect_spec = getattr(app_spec, 'architect_spec', None) or app_spec.to_dict().get('architect_spec')
+
+        if architect_spec:
+            # Review against ARCHITECT_SPEC (new workflow)
+            user_prompt = f"""Review this generated application against ARCHITECT_SPEC:
+
+ARCHITECT_SPEC:
+{json.dumps(architect_spec, indent=2)}
+
+GENERATED CODE:
+- Files: {file_count} files
+- Entry Point: {entry_point}
+- File Names: {', '.join(file_names)}
+- Structure: {json.dumps(structure, indent=2)}
+- TODOs Found: {todo_count} files with TODO/FIXME comments
+
+This is iteration {iteration + 1} of the review process.
+
+Checklist:
+- Stack matches ARCHITECT_SPEC.stack: {architect_spec.get('stack', 'unknown')}
+- Files match ARCHITECT_SPEC.files: {', '.join(architect_spec.get('files', []))}
+- All features from ARCHITECT_SPEC.features are implemented
+- Layout matches ARCHITECT_SPEC.requirements.layout
+- Persistence method matches ARCHITECT_SPEC.requirements.persistence
+- UX details match ARCHITECT_SPEC.ux_details
+"""
+        else:
+            # Fallback to old format
+            user_prompt = f"""Review this generated application against its specification:
 
 APP SPECIFICATION:
 {app_spec.summary()}
@@ -122,15 +158,20 @@ Suggested Improvements should be:
 - Focused on critical issues first
 - Realistic for the next iteration
 
-ready_for_user should be true if:
-- Core features are implemented and functional
-- UI is present and reasonable
-- App can be run and used
-- It's a good MVP even if enhancements are possible
+ready_for_user should be true ONLY if:
+- requirements_match ≥ 8 AND functional_completeness ≥ 8 AND ui_ux_reasonableness ≥ 8
+- No critical red flags
+- All features from ARCHITECT_SPEC.features are implemented
+- App matches ARCHITECT_SPEC requirements (stack, layout, persistence, UX)
 
-Return ONLY valid JSON, no markdown formatting or code blocks."""
+missing_core_features: List any features from ARCHITECT_SPEC.features that are NOT implemented.
+
+CRITICAL: You MUST return ONLY a valid JSON object. Do NOT include any markdown formatting, headers, explanations, or text before or after the JSON. Start your response with {{ and end with }}. No markdown, no code blocks, no explanations - ONLY the raw JSON object."""
 
         try:
+            print(f"    [ReviewerAgent] Preparing review: {file_count} files, {todo_count} files with TODOs", flush=True)
+            print(f"    [ReviewerAgent] Calling OpenAI API (model: {self.model}, max_tokens: 2000)...", flush=True)
+            api_start = time.time()
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -140,10 +181,15 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 temperature=0.3,
                 max_tokens=2000
             )
+            api_duration = time.time() - api_start
+            print(f"    [ReviewerAgent] OpenAI API call completed in {api_duration:.2f}s", flush=True)
+            print(f"    [ReviewerAgent] Response tokens: {response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 'unknown'}", flush=True)
             
             content = response.choices[0].message.content.strip()
+            print(f"    [ReviewerAgent] Response length: {len(content)} characters", flush=True)
             
             # Remove markdown code blocks if present
+            print(f"    [ReviewerAgent] Cleaning response (removing markdown if present)...", flush=True)
             if content.startswith("```json"):
                 content = content[7:]
             if content.startswith("```"):
@@ -152,7 +198,40 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 content = content[:-3]
             content = content.strip()
             
+            # Try to extract JSON from markdown text if it's not pure JSON
+            # First, try parsing as-is
+            try:
+                json.loads(content)
+            except json.JSONDecodeError:
+                # If that fails, try to extract JSON object from markdown
+                import re
+                # Look for JSON object with balanced braces
+                brace_count = 0
+                start_idx = -1
+                for i, char in enumerate(content):
+                    if char == '{':
+                        if start_idx == -1:
+                            start_idx = i
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and start_idx != -1:
+                            # Found complete JSON object
+                            extracted = content[start_idx:i+1]
+                            try:
+                                json.loads(extracted)  # Validate it's valid JSON
+                                content = extracted
+                                print(f"    [ReviewerAgent] Extracted JSON from markdown text (length: {len(content)} chars)", flush=True)
+                                break
+                            except json.JSONDecodeError:
+                                # Not valid JSON, continue searching
+                                start_idx = -1
+                                brace_count = 0
+            
+            print(f"    [ReviewerAgent] Parsing JSON response...", flush=True)
+            print(f"    [ReviewerAgent] Content preview (first 200 chars): {content[:200]}", flush=True)
             result = json.loads(content)
+            print(f"    [ReviewerAgent] JSON parsed successfully", flush=True)
             
             # Calculate overall score (weighted average)
             score = (
@@ -176,11 +255,30 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
             result["issues"] = result.get("obvious_red_flags", []) + result.get("missing_core_features", [])
             result["feedback"] = result.get("notes", "")
             
+            duration = time.time() - start_time
+            print(f"    [ReviewerAgent] ✓ REVIEWER phase complete in {duration:.2f}s", flush=True)
             print(f"    [ReviewerAgent] Score: {score:.1f}/100, Approved: {result['approved']}, Ready: {result.get('ready_for_user', False)}", flush=True)
+            if architect_spec:
+                req_match = result.get("requirements_match", 0)
+                func_comp = result.get("functional_completeness", 0)
+                ui_ux = result.get("ui_ux_reasonableness", 0)
+                print(f"    [ReviewerAgent] Individual scores: Requirements={req_match}/10, Functional={func_comp}/10, UI/UX={ui_ux}/10", flush=True)
+            print(f"    [ReviewerAgent] ===== REVIEWER phase finished =====", flush=True)
             return result
             
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"    [ReviewerAgent] Error in review: {e}, using fallback", flush=True)
+        except json.JSONDecodeError as e:
+            duration = time.time() - start_time
+            print(f"    [ReviewerAgent] ERROR: JSON decode error after {duration:.2f}s: {e}", flush=True)
+            print(f"    [ReviewerAgent] Response content (first 500 chars): {content[:500] if 'content' in locals() else 'N/A'}", flush=True)
+            print(f"    [ReviewerAgent] Using fallback review", flush=True)
+            return self._fallback_review(app_spec, iteration)
+        except Exception as e:
+            duration = time.time() - start_time
+            import traceback
+            print(f"    [ReviewerAgent] ERROR: Exception after {duration:.2f}s: {e}", flush=True)
+            print(f"    [ReviewerAgent] Traceback:", flush=True)
+            print(traceback.format_exc(), flush=True)
+            print(f"    [ReviewerAgent] Using fallback review", flush=True)
             return self._fallback_review(app_spec, iteration)
     
     def _fallback_review(self, app_spec: "AppSpec", iteration: int) -> Dict[str, Any]:
@@ -268,7 +366,7 @@ Requirements:
 - Provide constructive feedback
 - Consider code quality, completeness, UI/UX, and alignment with the original prompt
 
-Return ONLY valid JSON, no markdown formatting or code blocks."""
+CRITICAL: You MUST return ONLY a valid JSON object. Do NOT include any markdown formatting, headers, explanations, or text before or after the JSON. Start your response with {{ and end with }}. No markdown, no code blocks, no explanations - ONLY the raw JSON object."""
 
         try:
             response = await self.client.chat.completions.create(

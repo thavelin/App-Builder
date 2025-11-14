@@ -33,20 +33,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUser = useCallback(async (authToken: string) => {
     try {
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 5000) // 5 second timeout
-      })
-      
-      const fetchPromise = fetchWithRetry(`${API_BASE_URL}/api/auth/me`, {
+      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
         maxRetries: 1, // Reduce retries for auth check to fail faster
         retryDelay: 500,
+        timeout: 5000, // 5 second timeout
       })
-      
-      const data = await Promise.race([fetchPromise, timeoutPromise]) as any
       setUser(data)
     } catch (error) {
       // Token invalid or backend unreachable, clear it
@@ -89,12 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Login request timeout - is the backend running?')), 10000) // 10 second timeout
-      })
-      
-      const fetchPromise = fetchWithRetry(`${API_BASE_URL}/api/auth/login`, {
+      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,9 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ email, password }),
         maxRetries: 2, // Reduce retries for faster failure
         retryDelay: 500,
+        timeout: 10000, // 10 second timeout
       })
-      
-      const data = await Promise.race([fetchPromise, timeoutPromise]) as any
       
       const authToken = data.access_token
       if (!authToken) {
@@ -127,12 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (email: string, username: string, password: string) => {
     setIsLoading(true)
     try {
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Registration request timeout - is the backend running?')), 10000) // 10 second timeout
-      })
-      
-      const fetchPromise = fetchWithRetry(`${API_BASE_URL}/api/auth/register`, {
+      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -140,9 +123,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ email, username, password }),
         maxRetries: 2, // Reduce retries for faster failure
         retryDelay: 500,
+        timeout: 10000, // 10 second timeout
       })
-      
-      const data = await Promise.race([fetchPromise, timeoutPromise]) as any
       
       const authToken = data.access_token
       if (!authToken) {

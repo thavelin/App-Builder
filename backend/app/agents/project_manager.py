@@ -99,10 +99,14 @@ class ProjectManagerAgent:
         self.reviewer_agent.approval_threshold = review_threshold
         print(f"  [ProjectManager] Review threshold set to: {review_threshold}", flush=True)
         
-        # Step 1: Extract AppSpec from prompt
-        print("  [ProjectManager] Step 1: Extracting AppSpec from prompt...", flush=True)
+        # Step 1: Extract AppSpec from prompt (ARCHITECT phase)
+        print("  [ProjectManager] PHASE 1 - ARCHITECT: Extracting ARCHITECT_SPEC from prompt...", flush=True)
         app_spec = await self.requirements_agent.extract_spec(prompt, attachments)
-        print(f"  [ProjectManager] ✓ AppSpec extracted: {app_spec.complexity_level.value} complexity", flush=True)
+        architect_spec = getattr(app_spec, 'architect_spec', None) or app_spec.to_dict().get('architect_spec')
+        if architect_spec:
+            print(f"  [ProjectManager] ✓ ARCHITECT_SPEC extracted: {architect_spec.get('stack', 'unknown')} stack, {len(architect_spec.get('features', []))} features", flush=True)
+        else:
+            print(f"  [ProjectManager] ✓ AppSpec extracted: {app_spec.complexity_level.value} complexity", flush=True)
         print(f"    Goal: {app_spec.goal}", flush=True)
         print(f"    Features: {', '.join(app_spec.core_features[:3])}{'...' if len(app_spec.core_features) > 3 else ''}", flush=True)
         
@@ -119,8 +123,8 @@ class ProjectManagerAgent:
         for iteration in range(max_iterations):
             print(f"\n  [ProjectManager] === Iteration {iteration + 1}/{max_iterations} ===", flush=True)
             
-            # Step 3: Generate code
-            print("  [ProjectManager] Step 3: Generating code from AppSpec and UX plan...", flush=True)
+            # Step 3: Generate code (IMPLEMENTER phase)
+            print("  [ProjectManager] PHASE 2 - IMPLEMENTER: Generating code from ARCHITECT_SPEC...", flush=True)
             repair_brief = None
             if iteration > 0 and previous_code:
                 # Create repair brief from previous review
@@ -138,8 +142,8 @@ class ProjectManagerAgent:
             file_count = len(code_result.get("files", []))
             print(f"  [ProjectManager] ✓ Generated {file_count} files", flush=True)
             
-            # Step 4: Review against AppSpec
-            print("  [ProjectManager] Step 4: Reviewing code against AppSpec...", flush=True)
+            # Step 4: Review against ARCHITECT_SPEC (REVIEWER phase)
+            print("  [ProjectManager] PHASE 3 - REVIEWER: Reviewing code against ARCHITECT_SPEC...", flush=True)
             review = await self.reviewer_agent.review_against_spec(
                 app_spec=app_spec,
                 code_result=code_result,
@@ -150,10 +154,28 @@ class ProjectManagerAgent:
             score = review.get("score", 0)
             approved = review.get("approved", False)
             ready_for_user = review.get("ready_for_user", False)
+            
+            # Check individual scores for new workflow
+            requirements_match = review.get("requirements_match", 0)
+            functional_completeness = review.get("functional_completeness", 0)
+            ui_ux_reasonableness = review.get("ui_ux_reasonableness", 0)
+            
+            # For new workflow, ready_for_user should be based on all scores ≥ 8
+            if architect_spec:
+                ready_for_user = (
+                    ready_for_user and
+                    requirements_match >= 8 and
+                    functional_completeness >= 8 and
+                    ui_ux_reasonableness >= 8
+                )
             red_flags = review.get("obvious_red_flags", [])
             improvements = review.get("suggested_improvements", [])
             
-            print(f"  [ReviewerAgent] Score: {score:.1f}/100, Approved: {approved}, Ready: {ready_for_user}", flush=True)
+            if architect_spec:
+                print(f"  [ReviewerAgent] Requirements Match: {requirements_match}/10, Functional: {functional_completeness}/10, UI/UX: {ui_ux_reasonableness}/10", flush=True)
+                print(f"  [ReviewerAgent] Overall Score: {score:.1f}/100, Approved: {approved}, Ready: {ready_for_user}", flush=True)
+            else:
+                print(f"  [ReviewerAgent] Score: {score:.1f}/100, Approved: {approved}, Ready: {ready_for_user}", flush=True)
             if red_flags:
                 print(f"  [ReviewerAgent] Red flags: {len(red_flags)}", flush=True)
                 for flag in red_flags[:3]:

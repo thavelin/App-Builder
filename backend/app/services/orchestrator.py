@@ -82,14 +82,25 @@ class Orchestrator:
             print(f"[Job {job_id}] Review threshold set to: {review_threshold}", flush=True)
             if attachments:
                 print(f"[Job {job_id}] Processing {len(attachments)} attachment(s)", flush=True)
-            result = await self.project_manager.coordinate_generation(
-                prompt,
-                review_threshold=review_threshold,
-                attachments=attachments
-            )
+            
+            print(f"[Job {job_id}] Calling ProjectManager.coordinate_generation()...", flush=True)
+            print(f"[Job {job_id}] Full prompt: {prompt}", flush=True)
+            try:
+                result = await self.project_manager.coordinate_generation(
+                    prompt,
+                    review_threshold=review_threshold,
+                    attachments=attachments
+                )
+                print(f"[Job {job_id}] ProjectManager.coordinate_generation() returned successfully", flush=True)
+            except Exception as e:
+                import traceback
+                print(f"[Job {job_id}] ERROR in ProjectManager.coordinate_generation(): {e}", flush=True)
+                print(f"[Job {job_id}] Traceback:", flush=True)
+                print(traceback.format_exc(), flush=True)
+                raise
             
             duration = time.time() - start_time
-            print(f"[Job {job_id}] Design phase complete. Approved: {result.get('approved')}, Iterations: {result.get('iterations', 0)}", flush=True)
+            print(f"[Job {job_id}] Design phase complete in {duration:.2f}s. Approved: {result.get('approved')}, Iterations: {result.get('iterations', 0)}", flush=True)
             
             # Log telemetry
             app_spec_dict = result.get("app_spec", {})
