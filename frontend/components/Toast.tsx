@@ -55,7 +55,7 @@ export default function Toast({ message, type, duration = 5000, onClose }: Toast
 
   return (
     <div
-      className={`fixed top-4 right-4 z-50 flex items-center space-x-3 px-4 py-3 rounded-lg shadow-lg text-white ${bgColors[type]} transition-all duration-300 ${
+      className={`flex items-center space-x-3 px-4 py-3 rounded-lg shadow-lg text-white ${bgColors[type]} transition-all duration-300 ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
       }`}
     >
@@ -82,15 +82,22 @@ interface ToastContainerProps {
 }
 
 export function ToastContainer({ toasts, removeToast }: ToastContainerProps) {
+  if (toasts.length === 0) return null
+  
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2">
-      {toasts.map((toast) => (
-        <Toast
+    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
+      {toasts.map((toast, index) => (
+        <div
           key={toast.id}
-          message={toast.message}
-          type={toast.type}
-          onClose={() => removeToast(toast.id)}
-        />
+          className="animate-fade-in"
+          style={{ animationDelay: `${index * 0.1}s` }}
+        >
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        </div>
       ))}
     </div>
   )

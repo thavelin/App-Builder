@@ -4,12 +4,13 @@ API routes for app generation endpoints.
 import uuid
 import json
 import asyncio
-from typing import List
-from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends
 from app.schemas.request import GenerateRequest
 from app.schemas.response import GenerateResponse, StatusResponse, JobListItem
 from app.services.orchestrator import Orchestrator
 from app.storage import get_job, set_job, list_jobs
+from app.routes import auth
 
 router = APIRouter()
 
@@ -64,6 +65,27 @@ class ConnectionManager:
                 self.disconnect(conn, job_id)
         else:
             print(f"[WebSocket] No active connections for job {job_id}", flush=True)
+    
+    async def broadcast_job_list_update(self, message: dict):
+        """Broadcast a job list update to all job list connections."""
+        if "job_list" in self.active_connections:
+            connection_count = len(self.active_connections["job_list"])
+            print(f"[WebSocket] Broadcasting job list update to {connection_count} connection(s)", flush=True)
+            disconnected = []
+            sent_count = 0
+            for connection in self.active_connections["job_list"]:
+                try:
+                    await connection.send_json(message)
+                    sent_count += 1
+                except Exception as e:
+                    print(f"[WebSocket] Failed to send job list update: {e}", flush=True)
+                    disconnected.append(connection)
+            
+            print(f"[WebSocket] Successfully sent job list update to {sent_count}/{connection_count} connection(s)", flush=True)
+            
+            # Remove disconnected connections
+            for conn in disconnected:
+                self.disconnect(conn, "job_list")
 
 
 manager = ConnectionManager()
@@ -72,12 +94,13 @@ manager = ConnectionManager()
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_app(
     request: GenerateRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    current_user = Depends(auth.get_current_user)
 ):
     """
     Trigger app generation from a natural language prompt.
     
-    Returns a job_id that can be used to poll for status.
+    Requires authentication. Returns a job_id that can be used to poll for status.
     """
     job_id = str(uuid.uuid4())
     
@@ -89,7 +112,7 @@ async def generate_app(
     else:
         print(f"[Generate] Job {job_id} - no attachments", flush=True)
     
-    # Initialize job status
+    # Initialize job status with user_id
     await set_job(job_id, {
         "status": "pending",
         "step": "initializing",
@@ -97,7 +120,18 @@ async def generate_app(
         "download_url": None,
         "github_url": None,
         "deployment_url": None,
-        "error": None
+        "error": None,
+        "user_id": current_user.id
+    })
+    
+    # Broadcast job creation to job list WebSocket
+    await manager.broadcast_job_list_update({
+        "type": "job_created",
+        "data": {
+            "job_id": job_id,
+            "user_id": current_user.id,
+            "status": "pending"
+        }
     })
     
     # Start generation in background
@@ -114,15 +148,20 @@ async def generate_app(
 
 
 @router.get("/status/{job_id}", response_model=StatusResponse)
-async def get_status(job_id: str):
+async def get_status(job_id: str, current_user = Depends(auth.get_current_user)):
     """
     Get the current status of a generation job.
     
     Returns current step, progress, and any available URLs.
+    Only accessible by the job owner.
     """
     job = await get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Check if user owns this job
+    if job.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     return StatusResponse(
         job_id=job_id,
@@ -136,13 +175,29 @@ async def get_status(job_id: str):
 
 
 @router.get("/jobs", response_model=List[JobListItem])
-async def get_jobs(limit: int = 50, offset: int = 0):
+async def get_jobs(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    current_user = Depends(auth.get_current_user)
+):
     """
-    List all jobs with pagination.
+    List jobs for the current user with pagination and filtering.
     
-    Returns a list of jobs ordered by creation date (newest first).
+    Query parameters:
+    - limit: Maximum number of jobs to return (default: 50)
+    - offset: Number of jobs to skip (default: 0)
+    - status: Filter by status (pending, in_progress, complete, failed)
+    - q: Search query to filter by prompt text
     """
-    jobs = await list_jobs(limit=limit, offset=offset)
+    jobs = await list_jobs(
+        limit=limit,
+        offset=offset,
+        user_id=current_user.id,
+        status=status,
+        search=q
+    )
     return [
         JobListItem(
             id=job["id"],
@@ -162,6 +217,8 @@ async def websocket_status(websocket: WebSocket, job_id: str):
     WebSocket endpoint for real-time job status updates.
     
     Connects to a specific job and streams status changes.
+    Note: Authentication is not enforced on WebSocket connections for simplicity.
+    Access control is handled at the HTTP API level.
     """
     await manager.connect(websocket, job_id)
     

@@ -87,6 +87,18 @@ class Orchestrator:
                     "reviewing",
                     error="Generation did not meet quality standards"
                 )
+                # Broadcast job failure to job list WebSocket
+                if self.websocket_manager:
+                    try:
+                        await self.websocket_manager.broadcast_job_list_update({
+                            "type": "job_updated",
+                            "data": {
+                                "job_id": job_id,
+                                "status": "failed"
+                            }
+                        })
+                    except Exception as e:
+                        print(f"[Orchestrator] Failed to broadcast job failure: {e}", flush=True)
                 return
         except Exception as e:
             error_details = traceback.format_exc()
@@ -181,6 +193,19 @@ class Orchestrator:
                 "complete",
                 deployment_url=None  # TODO: Add actual deployment URL
             )
+            
+            # Broadcast job completion to job list WebSocket
+            if self.websocket_manager:
+                try:
+                    await self.websocket_manager.broadcast_job_list_update({
+                        "type": "job_updated",
+                        "data": {
+                            "job_id": job_id,
+                            "status": "complete"
+                        }
+                    })
+                except Exception as e:
+                    print(f"[Orchestrator] Failed to broadcast job completion: {e}", flush=True)
         except Exception as e:
             error_details = traceback.format_exc()
             print(f"Error completing job {job_id}:", flush=True)
@@ -255,6 +280,17 @@ class Orchestrator:
             try:
                 await self.websocket_manager.broadcast_to_job(job_id, message)
                 print(f"[Job {job_id}] WebSocket broadcast successful", flush=True)
+                
+                # Also broadcast to job list if status changed significantly
+                if status in ["complete", "failed", "in_progress"]:
+                    await self.websocket_manager.broadcast_job_list_update({
+                        "type": "job_updated",
+                        "data": {
+                            "job_id": job_id,
+                            "status": status,
+                            "step": step
+                        }
+                    })
             except Exception as e:
                 # WebSocket errors shouldn't block job updates
                 print(f"[Job {job_id}] WebSocket broadcast error: {e}", flush=True)

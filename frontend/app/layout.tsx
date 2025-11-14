@@ -1,7 +1,7 @@
-import type { Metadata } from 'next'
 import './globals.css'
+import { Providers } from './providers'
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'AI App Builder',
   description: 'Generate applications from natural language prompts',
 }
@@ -13,7 +13,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

@@ -21,8 +21,23 @@ class Job(SQLModel, table=True):
     github_url: Optional[str] = Field(default=None, description="URL to the GitHub repository")
     deployment_url: Optional[str] = Field(default=None, description="URL to the deployed application")
     error: Optional[str] = Field(default=None, description="Error message if the job failed")
+    user_id: Optional[str] = Field(default=None, foreign_key="users.id", description="User who created this job")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Job creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Job last update timestamp")
+
+
+class User(SQLModel, table=True):
+    """User model for authentication."""
+    
+    __tablename__ = "users"
+    
+    id: Optional[str] = Field(default=None, primary_key=True, description="Unique user identifier (UUID)")
+    email: str = Field(unique=True, index=True, description="User email address")
+    username: str = Field(unique=True, index=True, description="Username")
+    hashed_password: str = Field(description="Hashed password")
+    is_active: bool = Field(default=True, description="Whether the user account is active")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Account creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Account last update timestamp")
 
 
 # Database setup
@@ -54,4 +69,3 @@ async def get_session() -> AsyncSession:
     """Get an async database session."""
     async with AsyncSessionLocal() as session:
         yield session
-

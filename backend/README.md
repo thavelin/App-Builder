@@ -70,7 +70,9 @@ backend/
 ├── app/
 │   ├── main.py              # FastAPI application entry point
 │   ├── routes/
-│   │   └── generate.py      # API endpoints
+│   │   ├── generate.py      # Generation API endpoints
+│   │   ├── auth.py          # Authentication endpoints
+│   │   └── websockets.py    # WebSocket endpoints
 │   ├── agents/
 │   │   ├── project_manager.py
 │   │   ├── requirements_agent.py  # Extracts AppSpec from prompts
@@ -82,15 +84,52 @@ backend/
 │   │   ├── app_spec.py      # AppSpec schema definition
 │   │   ├── request.py       # Pydantic request schemas
 │   │   └── response.py      # Pydantic response schemas
+│   ├── auth.py              # Authentication utilities (JWT, password hashing)
 │   ├── services/
 │   │   ├── orchestrator.py  # Multi-agent workflow controller
 │   │   ├── execution.py     # Sandbox/runner integration
 │   │   ├── github.py        # GitHub API integration
 │   │   └── telemetry.py     # Run logging and analytics
+│   ├── models.py            # Database models (Job, User)
+│   └── storage.py           # Database operations
 ├── tests/
 ├── requirements.txt
 └── README.md
 ```
+
+## Authentication
+
+The API requires authentication for most endpoints. Users must register and login to:
+- Create new builds
+- View their build history
+- Access job status
+
+### Authentication Endpoints
+
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Login and get JWT token
+- `GET /api/auth/me` - Get current user information
+
+### JWT Tokens
+
+After login, clients receive a JWT token that must be included in the `Authorization` header:
+```
+Authorization: Bearer <token>
+```
+
+### Environment Variables
+
+Add to your `.env` file:
+```env
+JWT_SECRET_KEY=your-secret-key-change-in-production-use-random-string
+```
+
+## WebSocket Endpoints
+
+Real-time updates are available via WebSocket:
+
+- `/api/ws/status/{job_id}` - Real-time status updates for a specific job
+- `/api/ws/jobs` - Real-time job list updates (new jobs, status changes)
 
 ## Installation
 

@@ -1,12 +1,16 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import LoadingSteps from '@/components/LoadingSteps'
 import BuildResult from '@/components/BuildResult'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useToast } from '@/hooks/useToast'
-import { ToastContainer } from '@/components/Toast'
+import { useAuth, getAuthHeaders } from '@/hooks/useAuth'
+import { fetchWithRetry } from '@/utils/fetchWithRetry'
+import { AuthGuard } from '@/components/AuthGuard'
+import Navbar from '@/components/Navbar'
+import Loading from '@/components/Loading'
 
 interface StatusData {
   job_id: string
@@ -26,24 +30,21 @@ export default function StatusPage() {
   const [statusData, setStatusData] = useState<StatusData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const retryCountRef = useRef(0)
-  const maxRetries = 3
   const toast = useToast()
+  const { token } = useAuth()
 
-  // Fetch initial status with retry logic
-  const fetchStatus = async (retryCount = 0): Promise<void> => {
+  // Fetch initial status
+  const fetchStatus = async (): Promise<void> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/status/${jobId}`)
-      
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '')
-        throw new Error(`HTTP ${response.status}: ${errorText || 'Failed to fetch status'}`)
-      }
+      const data = await fetchWithRetry(
+        `${API_BASE_URL}/api/status/${jobId}`,
+        {
+          headers: getAuthHeaders(token),
+        }
+      )
 
-      const data = await response.json()
       setStatusData(data)
       setIsLoading(false)
-      retryCountRef.current = 0 // Reset retry count on success
       
       // Show toast notifications for status changes
       if (data.status === 'complete') {
@@ -52,25 +53,10 @@ export default function StatusPage() {
         toast.error(data.error || 'Build failed')
       }
     } catch (err) {
-      let errorMessage = 'Unknown error'
-      
-      if (err instanceof Error) {
-        // Distinguish between network errors and HTTP errors
-        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-          errorMessage = 'Server unreachable – is the backend running?'
-        } else {
-          errorMessage = err.message
-        }
-      }
-      
-      if (retryCount < maxRetries) {
-        retryCountRef.current = retryCount + 1
-        setTimeout(() => fetchStatus(retryCount + 1), 2000 * (retryCount + 1))
-      } else {
-        setError(errorMessage)
-        setIsLoading(false)
-        toast.error(`Failed to load status after ${maxRetries} attempts: ${errorMessage}`)
-      }
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load status'
+      setError(errorMessage)
+      setIsLoading(false)
+      toast.error(errorMessage)
     }
   }
 
@@ -100,30 +86,27 @@ export default function StatusPage() {
     reconnect: true,
   })
 
-  // Polling fallback - continues even when WebSocket is connected as a backup
-  // Polls at a slower rate (10s) when WebSocket is connected and receiving messages
-  // Polls at normal rate (3s) when WebSocket is not connected or not receiving messages
+  // Polling fallback - only if WebSocket is not working
   useEffect(() => {
-    // Only poll if job is still in progress
-    if (!statusData || (statusData.status !== 'in_progress' && statusData.status !== 'pending')) {
+    // Only poll if WebSocket is not connected or not receiving messages
+    // AND job is still in progress
+    if ((isConnected && hasReceivedMessage) || 
+        !statusData || 
+        (statusData.status !== 'in_progress' && statusData.status !== 'pending')) {
       return
     }
     
-    // Determine polling interval based on WebSocket state
-    // If WebSocket is connected AND we've received at least one message, poll less frequently as backup
-    // Otherwise, poll more frequently as primary update mechanism
-    const pollInterval = isConnected && hasReceivedMessage ? 10000 : 3000
-    
-    console.log(`[StatusPage] Starting polling with interval ${pollInterval}ms (WebSocket: ${isConnected ? 'connected' : 'disconnected'}, received messages: ${hasReceivedMessage})`)
+    console.log(`[StatusPage] WebSocket not working, using polling fallback`)
     
     const pollIntervalId = setInterval(async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/status/${jobId}`)
-        if (!response.ok) {
-          return
-        }
+        const currentStatus = await fetchWithRetry(
+          `${API_BASE_URL}/api/status/${jobId}`,
+          {
+            headers: getAuthHeaders(token),
+          }
+        )
         
-        const currentStatus = await response.json()
         console.log(`[StatusPage] Polling update: status=${currentStatus.status}, step=${currentStatus.step}`)
         
         // Stop polling if job is complete or failed
@@ -140,7 +123,6 @@ export default function StatusPage() {
           }
         } else {
           // Update status but keep polling
-          // Only update if status actually changed to avoid unnecessary re-renders
           if (!statusData || 
               statusData.status !== currentStatus.status || 
               statusData.step !== currentStatus.step) {
@@ -151,37 +133,40 @@ export default function StatusPage() {
         // Ignore polling errors, will retry on next interval
         console.error('[StatusPage] Polling error:', err)
       }
-    }, pollInterval)
+    }, 5000) // Poll every 5 seconds as fallback
     
     return () => {
       console.log('[StatusPage] Stopping polling')
       clearInterval(pollIntervalId)
     }
-  }, [isConnected, hasReceivedMessage, statusData, jobId, toast])
+  }, [isConnected, hasReceivedMessage, statusData, jobId, token, toast])
 
   useEffect(() => {
-    // Initial fetch
-    fetchStatus(0)
-  }, [jobId])
+    if (token) {
+      fetchStatus()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, token])
 
   if (isLoading && !statusData) {
     return (
-      <main className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-300">Loading status...</p>
-        </div>
-      </main>
+      <AuthGuard>
+        <Navbar />
+        <Loading fullScreen message="Loading status..." />
+      </AuthGuard>
     )
   }
 
   if (error || !statusData) {
     return (
-      <main className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 dark:text-red-400">Error: {error || 'Failed to load status'}</p>
-        </div>
-      </main>
+      <AuthGuard>
+        <Navbar />
+        <main className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-red-600 dark:text-red-400">Error: {error || 'Failed to load status'}</p>
+          </div>
+        </main>
+      </AuthGuard>
     )
   }
 
@@ -189,10 +174,10 @@ export default function StatusPage() {
   const isFailed = statusData.status === 'failed'
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <ToastContainer toasts={toast.toasts} removeToast={toast.removeToast} />
-      
-      <div className="container mx-auto px-4 py-16">
+    <AuthGuard>
+      <Navbar />
+      <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+        <div className="container mx-auto px-4 py-16">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="mb-8">
@@ -252,7 +237,8 @@ export default function StatusPage() {
           )}
         </div>
       </div>
-    </main>
+      </main>
+    </AuthGuard>
   )
 }
 

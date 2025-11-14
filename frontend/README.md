@@ -5,9 +5,13 @@ Next.js frontend application for the AI-powered multi-agent app builder.
 ## Features
 
 - **Clean, Modern UI**: Built with Tailwind CSS and Next.js App Router
-- **Real-time Status Updates**: Polls backend for build status
+- **Real-time Updates**: WebSocket-based live status and history updates
+- **Authentication**: User registration, login, and protected routes
+- **Robust Error Handling**: Automatic retry with exponential backoff
 - **Progress Indicators**: Visual step-by-step progress display
+- **Build History**: View, filter, search, and repeat previous builds
 - **Build Artifacts**: Download ZIP, view GitHub repo, and access deployment links
+- **Toast Notifications**: User-friendly success/error notifications
 - **Mobile-friendly**: Responsive design that works on all devices
 
 ## Project Structure
@@ -15,14 +19,28 @@ Next.js frontend application for the AI-powered multi-agent app builder.
 ```
 frontend/
 ├── app/
-│   ├── layout.tsx           # Root layout
-│   ├── page.tsx             # Main page with prompt input
-│   ├── status/[id]/page.tsx # Status page for job tracking
+│   ├── layout.tsx           # Root layout with providers
+│   ├── providers.tsx        # Auth and Toast providers
+│   ├── page.tsx             # Main page with prompt input (protected)
+│   ├── login/page.tsx       # Login page
+│   ├── register/page.tsx    # Registration page
+│   ├── status/[id]/page.tsx # Status page for job tracking (protected)
+│   ├── history/page.tsx     # Build history page (protected)
 │   └── globals.css          # Global styles
 ├── components/
 │   ├── PromptForm.tsx       # Prompt input form
 │   ├── LoadingSteps.tsx     # Progress indicator component
-│   └── BuildResult.tsx      # Results display component
+│   ├── BuildResult.tsx      # Results display component
+│   ├── Loading.tsx          # Centralized loading components
+│   ├── AuthGuard.tsx        # Route protection component
+│   ├── Navbar.tsx           # Navigation bar
+│   └── Toast.tsx            # Toast notification component
+├── hooks/
+│   ├── useAuth.ts           # Authentication hook and context
+│   ├── useToast.ts          # Toast notification hook
+│   └── useWebSocket.ts      # WebSocket connection hook
+├── utils/
+│   └── fetchWithRetry.ts    # Robust fetch with retry logic
 ├── package.json
 └── README.md
 ```
@@ -75,10 +93,13 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Usage
 
-1. Enter a natural language prompt describing the app you want to build
-2. Click "Generate App" to start the generation process
-3. You'll be redirected to a status page that shows real-time progress
-4. Once complete, download the ZIP file, view the GitHub repository, or access the deployed app
+1. **Register/Login**: Create an account or sign in
+2. **Enter a prompt**: Describe the app you want to build
+3. **Configure settings**: Set review threshold and optionally attach files
+4. **Generate**: Click "Generate App" to start the process
+5. **Monitor progress**: Watch real-time updates on the status page
+6. **View history**: Access your build history with filtering and search
+7. **Repeat builds**: Use the "Repeat" button to rebuild with the same prompt
 
 ## Development
 
@@ -108,24 +129,35 @@ The frontend communicates with the backend API at `http://localhost:8000` by def
 
 ### Endpoints Used
 
-- `POST /api/generate` - Start app generation
-- `GET /api/status/{job_id}` - Get job status (polled every 2 seconds)
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login and get JWT token
+- `GET /api/auth/me` - Get current user info
+- `POST /api/generate` - Start app generation (requires auth)
+- `GET /api/status/{job_id}` - Get job status (requires auth)
+- `GET /api/jobs` - List user's jobs with filtering (requires auth)
 - `WebSocket /api/ws/status/{job_id}` - Real-time status updates
+- `WebSocket /api/ws/jobs` - Real-time job list updates
 
 ### Error Handling
 
-The frontend provides user-friendly error messages for common issues:
+The frontend uses `fetchWithRetry` utility for all API calls, providing:
 
-- **Missing Entry Point**: If a generated app is missing a runnable file (app.py, main.py, or index.js), a helpful alert is displayed suggesting the user try again or refine their prompt.
-- **Network Errors**: If the backend is unreachable, a clear message is shown asking the user to check if the backend is running.
-- **Build Failures**: All build errors are displayed with clear, actionable messages.
+- **Automatic retries**: Exponential backoff on network/HTTP errors
+- **User-friendly messages**: Clear error descriptions
+- **Toast notifications**: Success/error feedback for all actions
+- **Graceful degradation**: Polling fallback when WebSocket fails
 
-## Next Steps
+### Authentication
 
-- [ ] Add error handling and retry logic
-- [ ] Implement WebSocket for real-time updates (instead of polling)
-- [ ] Add authentication
-- [ ] Add build history/previous builds page
-- [ ] Improve loading states and animations
-- [ ] Add toast notifications
+All protected routes require authentication. Unauthenticated users are redirected to `/login`.
+
+- JWT tokens are stored in `localStorage`
+- Tokens are automatically included in API requests
+- Auth state is managed via `useAuth` hook
+
+### WebSocket Updates
+
+- **Status page**: Real-time updates via `/api/ws/status/{job_id}`
+- **History page**: Live updates via `/api/ws/jobs` when jobs are created/updated
+- **Fallback**: Automatic polling if WebSocket connection fails
 

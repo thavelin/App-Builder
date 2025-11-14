@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routes import generate
+from app.routes import generate, auth, websockets
 from app.models import init_db
 from app.config import settings
 from app.services.job_timeout import start_job_timeout_monitor
@@ -44,7 +44,9 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router, prefix="/api")
 app.include_router(generate.router, prefix="/api", tags=["generate"])
+app.include_router(websockets.router, prefix="/api", tags=["websockets"])
 
 # Mount static files for serving generated ZIP files
 output_dir = Path("output")

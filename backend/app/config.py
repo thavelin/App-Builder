@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     github_token: str = os.getenv("GITHUB_TOKEN", "")
     github_username: str = os.getenv("GITHUB_USERNAME", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4")
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production-use-random-string")
     
     # CORS origins - split comma-separated string into list
     cors_origins: List[str] = [

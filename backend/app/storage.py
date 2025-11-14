@@ -26,6 +26,7 @@ async def get_job(job_id: str) -> Optional[Dict[str, Any]]:
             "github_url": job.github_url,
             "deployment_url": job.deployment_url,
             "error": job.error,
+            "user_id": job.user_id,
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "updated_at": job.updated_at.isoformat() if job.updated_at else None,
         }
@@ -41,7 +42,7 @@ async def set_job(job_id: str, job_data: Dict[str, Any]) -> None:
         if existing_job:
             # Update existing job
             for key, value in job_data.items():
-                if hasattr(existing_job, key):
+                if hasattr(existing_job, key) and key != "id":  # Don't update ID
                     setattr(existing_job, key, value)
             existing_job.updated_at = datetime.utcnow()
             session.add(existing_job)
@@ -56,6 +57,7 @@ async def set_job(job_id: str, job_data: Dict[str, Any]) -> None:
                 github_url=job_data.get("github_url"),
                 deployment_url=job_data.get("deployment_url"),
                 error=job_data.get("error"),
+                user_id=job_data.get("user_id"),
             )
             session.add(new_job)
         
@@ -104,11 +106,31 @@ async def job_exists(job_id: str) -> bool:
         return result.scalar_one_or_none() is not None
 
 
-async def list_jobs(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
-    """List all jobs, ordered by created_at descending."""
+async def list_jobs(
+    limit: int = 50, 
+    offset: int = 0, 
+    user_id: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """List jobs, ordered by created_at descending. Optionally filter by user, status, or search."""
     async with AsyncSessionLocal() as session:
+        query = select(Job)
+        
+        # Filter by user if provided
+        if user_id:
+            query = query.where(Job.user_id == user_id)
+        
+        # Filter by status if provided
+        if status:
+            query = query.where(Job.status == status)
+        
+        # Search in prompt if provided
+        if search:
+            query = query.where(Job.prompt.contains(search))
+        
         result = await session.execute(
-            select(Job)
+            query
             .order_by(Job.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -125,6 +147,7 @@ async def list_jobs(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
                 "github_url": job.github_url,
                 "deployment_url": job.deployment_url,
                 "error": job.error,
+                "user_id": job.user_id,
                 "created_at": job.created_at.isoformat() if job.created_at else None,
                 "updated_at": job.updated_at.isoformat() if job.updated_at else None,
             }
