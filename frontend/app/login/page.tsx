@@ -22,11 +22,12 @@ export default function LoginPage() {
     try {
       await login(email, password)
       toast.success('Logged in successfully!')
-      router.push('/')
+      // Use replace instead of push to avoid back button issues
+      router.replace('/')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Login failed'
+      console.error('Login error:', error)
       toast.error(errorMessage)
-    } finally {
       setIsSubmitting(false)
     }
   }

@@ -1,5 +1,6 @@
 import './globals.css'
 import { Providers } from './providers'
+import type { ReactNode } from 'react'
 
 export const metadata = {
   title: 'AI App Builder',
@@ -9,7 +10,7 @@ export const metadata = {
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <html lang="en">

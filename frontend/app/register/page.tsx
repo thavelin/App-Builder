@@ -35,11 +35,12 @@ export default function RegisterPage() {
     try {
       await register(email, username, password)
       toast.success('Account created successfully!')
-      router.push('/')
+      // Use replace instead of push to avoid back button issues
+      router.replace('/')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Registration failed'
+      console.error('Registration error:', error)
       toast.error(errorMessage)
-    } finally {
       setIsSubmitting(false)
     }
   }

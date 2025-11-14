@@ -33,14 +33,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUser = useCallback(async (authToken: string) => {
     try {
-      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/me`, {
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 5000) // 5 second timeout
+      })
+      
+      const fetchPromise = fetchWithRetry(`${API_BASE_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
+        maxRetries: 1, // Reduce retries for auth check to fail faster
+        retryDelay: 500,
       })
+      
+      const data = await Promise.race([fetchPromise, timeoutPromise]) as any
       setUser(data)
     } catch (error) {
-      // Token invalid, clear it
+      // Token invalid or backend unreachable, clear it
+      console.warn('Auth check failed:', error)
       localStorage.removeItem('auth_token')
       setToken(null)
       setUser(null)
@@ -51,12 +61,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load token and user from localStorage on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem('auth_token')
-    if (storedToken) {
-      setToken(storedToken)
-      // Fetch user info
-      fetchUser(storedToken)
-    } else {
+    // Check if we're in the browser (localStorage is available)
+    if (typeof window === 'undefined') {
+      setIsLoading(false)
+      return
+    }
+    
+    try {
+      const storedToken = localStorage.getItem('auth_token')
+      if (storedToken) {
+        setToken(storedToken)
+        // Fetch user info with timeout protection
+        fetchUser(storedToken).catch((error) => {
+          console.error('Failed to fetch user:', error)
+          setIsLoading(false)
+        })
+      } else {
+        setIsLoading(false)
+      }
+    } catch (error) {
+      // localStorage might not be available (e.g., in private browsing)
+      console.warn('localStorage not available:', error)
       setIsLoading(false)
     }
   }, [fetchUser])
@@ -64,18 +89,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/login`, {
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Login request timeout - is the backend running?')), 10000) // 10 second timeout
+      })
+      
+      const fetchPromise = fetchWithRetry(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, password }),
+        maxRetries: 2, // Reduce retries for faster failure
+        retryDelay: 500,
       })
       
+      const data = await Promise.race([fetchPromise, timeoutPromise]) as any
+      
       const authToken = data.access_token
+      if (!authToken) {
+        throw new Error('No access token received from server')
+      }
+      
       localStorage.setItem('auth_token', authToken)
       setToken(authToken)
       setUser(data.user)
+    } catch (error) {
+      // Re-throw error so login page can handle it
+      const errorMessage = error instanceof Error ? error.message : 'Login failed'
+      console.error('Login error:', errorMessage)
+      throw new Error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -84,18 +127,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (email: string, username: string, password: string) => {
     setIsLoading(true)
     try {
-      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/register`, {
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Registration request timeout - is the backend running?')), 10000) // 10 second timeout
+      })
+      
+      const fetchPromise = fetchWithRetry(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, username, password }),
+        maxRetries: 2, // Reduce retries for faster failure
+        retryDelay: 500,
       })
       
+      const data = await Promise.race([fetchPromise, timeoutPromise]) as any
+      
       const authToken = data.access_token
+      if (!authToken) {
+        throw new Error('No access token received from server')
+      }
+      
       localStorage.setItem('auth_token', authToken)
       setToken(authToken)
       setUser(data.user)
+    } catch (error) {
+      // Re-throw error so register page can handle it
+      const errorMessage = error instanceof Error ? error.message : 'Registration failed'
+      console.error('Registration error:', errorMessage)
+      throw new Error(errorMessage)
     } finally {
       setIsLoading(false)
     }
