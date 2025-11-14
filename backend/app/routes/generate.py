@@ -103,10 +103,17 @@ async def generate_app(
     Requires authentication. Returns a job_id that can be used to poll for status.
     """
     import sys
+    import datetime
+    
+    # Force immediate output - this should appear immediately
+    sys.stdout.flush()
+    sys.stderr.flush()
     print("\n" + "="*80, flush=True)
     print("[Generate] ===== ENDPOINT CALLED =====", flush=True)
-    print(f"[Generate] Timestamp: {__import__('datetime').datetime.now()}", flush=True)
+    print(f"[Generate] Timestamp: {datetime.datetime.now()}", flush=True)
     print("="*80 + "\n", flush=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
     
     job_id = str(uuid.uuid4())
     
@@ -132,6 +139,7 @@ async def generate_app(
     print(f"[Generate] Prompt: {request.prompt[:200]}{'...' if len(request.prompt) > 200 else ''}", flush=True)
     print(f"[Generate] Review threshold: {request.review_threshold}", flush=True)
     print(f"[Generate] Attachments: {len(request.attachments) if request.attachments else 0}", flush=True)
+    sys.stdout.flush()
     
     await set_job(job_id, {
         "status": "pending",

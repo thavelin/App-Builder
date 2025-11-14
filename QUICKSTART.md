@@ -28,6 +28,14 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# IMPORTANT: Set Python to unbuffered mode for real-time logs
+# On Windows (PowerShell):
+$env:PYTHONUNBUFFERED="1"
+# On Windows (Command Prompt):
+set PYTHONUNBUFFERED=1
+# On macOS/Linux:
+export PYTHONUNBUFFERED=1
+
 # Create .env file from example
 # On Windows:
 copy .env.example .env
@@ -42,8 +50,12 @@ cp .env.example .env
 # - GITHUB_USERNAME=your_username (optional)
 # - CORS_ORIGINS=http://localhost:3000 (optional, defaults to http://localhost:3000)
 
-# Run the server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Run the server (with unbuffered output for real-time logs)
+# IMPORTANT: Use python -u for unbuffered output so logs appear immediately
+python -u -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# OR if you already set PYTHONUNBUFFERED=1 above:
+# uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Run Backend
 cd backend
@@ -53,7 +65,7 @@ python -m venv venv
 # On Windows (PowerShell):
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -u -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Backend will be available at: `http://localhost:8000`
