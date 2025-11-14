@@ -1,7 +1,5 @@
 """Routes package."""
 
-# Export routers for easy importing
-from . import generate, auth, websockets
-
-__all__ = ['generate', 'auth', 'websockets']
+# Don't import here to avoid circular dependencies
+# Import directly in main.py: from app.routes import generate, auth, websockets
 

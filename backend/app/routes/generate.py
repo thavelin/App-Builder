@@ -10,7 +10,7 @@ from app.schemas.request import GenerateRequest
 from app.schemas.response import GenerateResponse, StatusResponse, JobListItem
 from app.services.orchestrator import Orchestrator
 from app.storage import get_job, set_job, list_jobs
-from app.routes import auth
+from . import auth
 
 router = APIRouter()
 
