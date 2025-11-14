@@ -4,7 +4,8 @@ GitHub Service
 Handles GitHub repository creation and file pushing.
 """
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from app.config import settings
 
 
 class GitHubService:
@@ -18,10 +19,15 @@ class GitHubService:
     """
     
     def __init__(self):
-        # TODO: Initialize GitHub API client
-        # self.github_token = os.getenv("GITHUB_TOKEN")
-        # self.github_client = Github(self.github_token)
-        pass
+        self.github_token: Optional[str] = settings.github_token if settings.github_token else None
+        self.github_username: Optional[str] = settings.github_username if settings.github_username else None
+        
+        # TODO: Initialize GitHub API client when token is available
+        # if self.github_token:
+        #     from github import Github
+        #     self.github_client = Github(self.github_token)
+        # else:
+        #     self.github_client = None
     
     async def create_repo(self, name: str, description: str = None) -> Dict[str, Any]:
         """

@@ -57,10 +57,18 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and add your OpenAI API key
+# Edit .env and add your configuration:
+# - OPENAI_API_KEY (required for AI features)
+# - GITHUB_TOKEN (optional, for GitHub integration)
+# - GITHUB_USERNAME (optional, for GitHub integration)
+# - OPENAI_MODEL (optional, defaults to gpt-4)
 ```
 
-4. **Run the development server**:
+4. **Database Setup**:
+
+The database (SQLite) will be automatically created on first run. The database file `app_builder.db` will be created in the backend directory.
+
+5. **Run the development server**:
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -90,7 +98,7 @@ Trigger app generation from a natural language prompt.
 
 ### GET `/api/status/{job_id}`
 
-Get the current status of a generation job.
+Get the current status of a generation job (polling endpoint).
 
 **Response**:
 ```json
@@ -105,6 +113,48 @@ Get the current status of a generation job.
 }
 ```
 
+### WebSocket `/api/ws/status/{job_id}`
+
+Real-time status updates via WebSocket. Connects to a specific job and streams status changes.
+
+**Message Format**:
+```json
+{
+  "type": "status_update",
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "in_progress",
+    "step": "coding",
+    "download_url": null,
+    "github_url": null,
+    "deployment_url": null,
+    "error": null
+  }
+}
+```
+
+### GET `/api/jobs`
+
+List all jobs with pagination.
+
+**Query Parameters**:
+- `limit` (optional, default: 50): Maximum number of jobs to return
+- `offset` (optional, default: 0): Number of jobs to skip
+
+**Response**:
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "prompt": "Create a todo list app",
+    "status": "complete",
+    "step": "complete",
+    "created_at": "2024-01-01T12:00:00",
+    "updated_at": "2024-01-01T12:05:00"
+  }
+]
+```
+
 ## Development
 
 ### Running Tests
@@ -117,23 +167,70 @@ pytest
 
 This project uses type hints throughout. Follow PEP 8 style guidelines.
 
+## Database
+
+The application uses SQLite with SQLModel for persistent job storage. The database is automatically initialized on startup.
+
+**Database File**: `app_builder.db` (created in the backend directory)
+
+**Job Model Fields**:
+- `id`: UUID string (primary key)
+- `prompt`: User's original prompt
+- `status`: Job status (pending, in_progress, complete, failed)
+- `step`: Current step in generation process
+- `download_url`: URL to download ZIP file
+- `github_url`: URL to GitHub repository
+- `deployment_url`: URL to deployed application
+- `error`: Error message if failed
+- `created_at`: Creation timestamp
+- `updated_at`: Last update timestamp
+
+## Real-Time Updates
+
+The backend supports real-time status updates via WebSocket connections. The frontend automatically connects to the WebSocket endpoint and receives updates as jobs progress. If WebSocket connection fails, the frontend falls back to polling.
+
 ## Environment Variables
 
-- `OPENAI_API_KEY`: Required for OpenAI API calls
+- `OPENAI_API_KEY`: **Required** for OpenAI API calls (AI agent functionality)
+- `OPENAI_MODEL`: Optional, OpenAI model to use (default: `gpt-4`)
 - `GITHUB_TOKEN`: Optional, for GitHub integration
 - `GITHUB_USERNAME`: Optional, for GitHub integration
 - `HOST`: Server host (default: 0.0.0.0)
 - `PORT`: Server port (default: 8000)
 - `CORS_ORIGINS`: Comma-separated list of allowed origins
 
+## Testing
+
+Run tests with pytest:
+
+```bash
+pytest
+```
+
+Run with coverage:
+
+```bash
+pytest --cov=app tests/
+```
+
+## Features Implemented
+
+✅ Persistent job storage with SQLite
+✅ Real-time WebSocket updates
+✅ OpenAI integration in all agents
+✅ Code execution with subprocess (basic sandboxing)
+✅ Error handling and retry logic
+✅ Job history endpoint
+✅ Type hints throughout
+✅ Unit tests for storage and WebSocket
+
 ## Next Steps
 
-- [ ] Implement full OpenAI integration in agents
-- [ ] Add database for job storage (replace in-memory dict)
-- [ ] Implement actual code execution sandbox
-- [ ] Complete GitHub API integration
+- [ ] Complete GitHub API integration (currently stubbed)
 - [ ] Add deployment integration (Vercel, Netlify, etc.)
-- [ ] Add comprehensive error handling
-- [ ] Implement logging
+- [ ] Implement proper Docker-based sandboxing for code execution
+- [ ] Add comprehensive logging
 - [ ] Add authentication/authorization
+- [ ] Add rate limiting
+- [ ] Migrate to PostgreSQL for production
 

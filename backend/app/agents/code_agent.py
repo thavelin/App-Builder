@@ -3,8 +3,10 @@ Code Agent
 
 Generates code and supporting files for the application.
 """
+import json
 from typing import Dict, Any, List
-import os
+from openai import AsyncOpenAI
+from app.config import settings
 
 
 class CodeAgent:
@@ -18,38 +20,115 @@ class CodeAgent:
     """
     
     def __init__(self):
-        # TODO: Initialize OpenAI client
-        pass
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+        self.model = settings.openai_model
     
     async def generate_code(self, description: str) -> Dict[str, Any]:
         """
-        Generate code based on the task description.
+        Generate code based on the task description using OpenAI.
         
         Returns a dictionary with:
         - files: List of file paths and their contents
         - structure: Project structure information
         - dependencies: Required dependencies
         """
-        # TODO: Implement code generation using OpenAI
-        # For now, return placeholder structure
-        
-        return {
-            "files": [
-                {
-                    "path": "app.py",
-                    "content": f"# Generated code for: {description}\n# TODO: Implement actual code generation"
+        if not self.client:
+            # Fallback to placeholder if OpenAI is not configured
+            return {
+                "files": [
+                    {
+                        "path": "app.py",
+                        "content": f"# Generated code for: {description}\n# OpenAI API key not configured"
+                    },
+                    {
+                        "path": "requirements.txt",
+                        "content": "# Dependencies\n# Add required packages here"
+                    }
+                ],
+                "structure": {
+                    "type": "python",
+                    "entry_point": "app.py"
                 },
-                {
-                    "path": "requirements.txt",
-                    "content": "# Dependencies\n# TODO: Generate based on requirements"
-                }
-            ],
-            "structure": {
-                "type": "python",
-                "entry_point": "app.py"
-            },
-            "dependencies": []
-        }
+                "dependencies": []
+            }
+        
+        prompt = f"""You are an expert software developer. Generate a complete, working application based on this description:
+
+{description}
+
+Please provide a JSON response with the following structure:
+{{
+    "files": [
+        {{"path": "filename.py", "content": "file content here"}},
+        ...
+    ],
+    "structure": {{
+        "type": "python|node|react|etc",
+        "entry_point": "main file path"
+    }},
+    "dependencies": ["package1", "package2", ...]
+}}
+
+Requirements:
+- Generate complete, runnable code
+- Include all necessary files (main code, config files, dependencies file)
+- Use best practices and clean code
+- Add helpful comments
+- Ensure the code is functional and well-structured
+
+Return ONLY valid JSON, no markdown formatting or code blocks."""
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are an expert software developer. Always return valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=4000
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            # Remove markdown code blocks if present
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+            
+            result = json.loads(content)
+            return result
+            
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse OpenAI response as JSON: {e}")
+            # Fallback response
+            return {
+                "files": [
+                    {
+                        "path": "app.py",
+                        "content": f"# Generated code for: {description}\n# Error parsing AI response\nprint('Hello, World!')"
+                    }
+                ],
+                "structure": {"type": "python", "entry_point": "app.py"},
+                "dependencies": []
+            }
+        except Exception as e:
+            print(f"OpenAI API error in CodeAgent: {e}")
+            # Fallback response
+            return {
+                "files": [
+                    {
+                        "path": "app.py",
+                        "content": f"# Generated code for: {description}\n# OpenAI API error occurred\nprint('Hello, World!')"
+                    }
+                ],
+                "structure": {"type": "python", "entry_point": "app.py"},
+                "dependencies": []
+            }
     
     async def generate_supporting_files(self, project_type: str) -> List[Dict[str, str]]:
         """

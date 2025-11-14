@@ -50,3 +50,14 @@ class StatusResponse(BaseModel):
         example=None
     )
 
+
+class JobListItem(BaseModel):
+    """Response schema for job list items."""
+    
+    id: str = Field(..., description="Unique identifier for the generation job")
+    prompt: str = Field(..., description="User's original prompt")
+    status: str = Field(..., description="Current job status")
+    step: str = Field(..., description="Current step in the generation process")
+    created_at: Optional[str] = Field(None, description="Job creation timestamp (ISO format)")
+    updated_at: Optional[str] = Field(None, description="Job last update timestamp (ISO format)")
+

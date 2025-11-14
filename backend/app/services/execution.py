@@ -26,26 +26,111 @@ class ExecutionService:
     
     async def run_generated_code(self, project_files: Dict[str, str]) -> Dict[str, Any]:
         """
-        Run the generated code in a sandbox environment.
+        Run the generated code in a sandbox environment using subprocess.
         
-        TODO: Implement actual sandbox execution.
-        For now, this is a placeholder that simulates execution.
+        NOTE: This is a basic implementation. For production, use proper sandboxing:
+        - Docker containers with resource limits
+        - Isolated execution environments
+        - Timeout mechanisms
+        - Security restrictions (no network access, limited file system, etc.)
         
         Returns a dictionary with execution results.
         """
-        # TODO: Implement sandbox execution
-        # - Create temporary directory
-        # - Write files
-        # - Run appropriate command (python, npm start, etc.)
-        # - Capture output and errors
-        # - Clean up
+        import asyncio
+        import subprocess
+        import tempfile
+        import shutil
         
-        return {
-            "success": True,
-            "output": "Code executed successfully (placeholder)",
-            "errors": [],
-            "exit_code": 0
-        }
+        project_type = self._detect_project_type(project_files)
+        temp_dir = None
+        
+        try:
+            # Create temporary directory
+            temp_dir = tempfile.mkdtemp(prefix="app_builder_")
+            
+            # Write all files to temp directory
+            for file_path, content in project_files.items():
+                full_path = Path(temp_dir) / file_path
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.write_text(content, encoding='utf-8')
+            
+            # Determine command based on project type
+            if project_type == "python":
+                # Find entry point
+                entry_point = next(
+                    (path for path in project_files.keys() if "app.py" in path or "main.py" in path),
+                    None
+                )
+                if entry_point:
+                    cmd = ["python", entry_point]
+                else:
+                    return {
+                        "success": False,
+                        "output": "",
+                        "errors": ["No Python entry point found"],
+                        "exit_code": 1
+                    }
+            elif project_type == "node":
+                # Install dependencies first (if package.json exists)
+                if any("package.json" in path for path in project_files.keys()):
+                    install_proc = await asyncio.create_subprocess_exec(
+                        "npm", "install",
+                        cwd=temp_dir,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await install_proc.wait()
+                
+                cmd = ["node", "index.js"] if "index.js" in project_files else ["npm", "start"]
+            else:
+                return {
+                    "success": False,
+                    "output": f"Unsupported project type: {project_type}",
+                    "errors": [f"Cannot execute {project_type} projects"],
+                    "exit_code": 1
+                }
+            
+            # Run the code with timeout
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=temp_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=30.0  # 30 second timeout
+                )
+                exit_code = process.returncode
+                
+                return {
+                    "success": exit_code == 0,
+                    "output": stdout.decode('utf-8', errors='ignore'),
+                    "errors": stderr.decode('utf-8', errors='ignore').split('\n') if stderr else [],
+                    "exit_code": exit_code
+                }
+            except asyncio.TimeoutError:
+                process.kill()
+                return {
+                    "success": False,
+                    "output": "",
+                    "errors": ["Execution timeout (30s)"],
+                    "exit_code": -1
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "output": "",
+                "errors": [str(e)],
+                "exit_code": 1
+            }
+        finally:
+            # Clean up temporary directory
+            if temp_dir and Path(temp_dir).exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
     
     async def validate_app_runs(self, project_files: Dict[str, str]) -> Dict[str, Any]:
         """

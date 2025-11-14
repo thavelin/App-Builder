@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import LoadingSteps from '@/components/LoadingSteps'
 import BuildResult from '@/components/BuildResult'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { useToast } from '@/hooks/useToast'
+import { ToastContainer } from '@/components/Toast'
 
 interface StatusData {
   job_id: string
@@ -15,37 +18,88 @@ interface StatusData {
   error: string | null
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
 export default function StatusPage() {
   const params = useParams()
   const jobId = params.id as string
   const [statusData, setStatusData] = useState<StatusData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const retryCountRef = useRef(0)
+  const maxRetries = 3
+  const toast = useToast()
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const response = await fetch(`http://localhost:8000/api/status/${jobId}`)
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch status')
-        }
+  // Fetch initial status with retry logic
+  const fetchStatus = async (retryCount = 0): Promise<void> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/status/${jobId}`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Failed to fetch status`)
+      }
 
-        const data = await response.json()
-        setStatusData(data)
+      const data = await response.json()
+      setStatusData(data)
+      setIsLoading(false)
+      retryCountRef.current = 0 // Reset retry count on success
+      
+      // Show toast notifications for status changes
+      if (data.status === 'complete') {
+        toast.success('Build completed successfully!')
+      } else if (data.status === 'failed') {
+        toast.error(data.error || 'Build failed')
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      
+      if (retryCount < maxRetries) {
+        retryCountRef.current = retryCount + 1
+        setTimeout(() => fetchStatus(retryCount + 1), 2000 * (retryCount + 1))
+      } else {
+        setError(errorMessage)
         setIsLoading(false)
-
-        // Continue polling if not complete or failed
-        if (data.status === 'in_progress' || data.status === 'pending') {
-          setTimeout(fetchStatus, 2000) // Poll every 2 seconds
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error')
-        setIsLoading(false)
+        toast.error(`Failed to load status after ${maxRetries} attempts`)
       }
     }
+  }
 
-    fetchStatus()
+  // WebSocket connection for real-time updates
+  const wsUrl = `${API_BASE_URL}/api/ws/status/${jobId}`
+  const { isConnected, lastMessage } = useWebSocket({
+    url: wsUrl,
+    onMessage: (message) => {
+      if (message.type === 'status_update' && message.data) {
+        setStatusData(message.data)
+        setIsLoading(false)
+        
+        // Show toast notifications
+        if (message.data.status === 'complete') {
+          toast.success('Build completed successfully!')
+        } else if (message.data.status === 'failed') {
+          toast.error(message.data.error || 'Build failed')
+        }
+      }
+    },
+    onError: () => {
+      // Fallback to polling if WebSocket fails
+      if (statusData && (statusData.status === 'in_progress' || statusData.status === 'pending')) {
+        const pollInterval = setInterval(() => {
+          fetchStatus(0)
+          if (statusData?.status === 'complete' || statusData?.status === 'failed') {
+            clearInterval(pollInterval)
+          }
+        }, 3000)
+        
+        return () => clearInterval(pollInterval)
+      }
+    },
+    reconnect: true,
+  })
+
+  useEffect(() => {
+    // Initial fetch
+    fetchStatus(0)
   }, [jobId])
 
   if (isLoading && !statusData) {
@@ -74,16 +128,29 @@ export default function StatusPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+      <ToastContainer toasts={toast.toasts} removeToast={toast.removeToast} />
+      
       <div className="container mx-auto px-4 py-16">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-              Build Status
-            </h1>
-            <p className="text-gray-600 dark:text-gray-300">
-              Job ID: <span className="font-mono text-sm">{jobId}</span>
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+                  Build Status
+                </h1>
+                <p className="text-gray-600 dark:text-gray-300">
+                  Job ID: <span className="font-mono text-sm">{jobId}</span>
+                </p>
+              </div>
+              {/* Connection status indicator */}
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  {isConnected ? 'Live' : 'Polling'}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Status Display */}

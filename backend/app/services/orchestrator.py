@@ -4,11 +4,11 @@ Orchestrator Service
 Multi-agent workflow controller that coordinates the entire generation process.
 """
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from app.agents.project_manager import ProjectManagerAgent
 from app.services.execution import ExecutionService
 from app.services.github import GitHubService
-from app.storage import update_job
+from app.storage import update_job, get_job
 
 
 class Orchestrator:
@@ -21,10 +21,11 @@ class Orchestrator:
     5. GitHub service pushes to repository
     """
     
-    def __init__(self):
+    def __init__(self, websocket_manager=None):
         self.project_manager = ProjectManagerAgent()
         self.execution_service = ExecutionService()
         self.github_service = GitHubService()
+        self.websocket_manager = websocket_manager
     
     async def generate_app(self, job_id: str, prompt: str):
         """
@@ -34,13 +35,13 @@ class Orchestrator:
         """
         try:
             # Update status: design phase
-            self._update_job_status(job_id, "in_progress", "design")
+            await self._update_job_status(job_id, "in_progress", "design")
             
             # Step 1: Project Manager coordinates generation
             result = await self.project_manager.coordinate_generation(prompt)
             
             if not result["approved"]:
-                self._update_job_status(
+                await self._update_job_status(
                     job_id,
                     "failed",
                     "reviewing",
@@ -49,17 +50,17 @@ class Orchestrator:
                 return
             
             # Update status: coding phase
-            self._update_job_status(job_id, "in_progress", "coding")
+            await self._update_job_status(job_id, "in_progress", "coding")
             
             # Step 2: Prepare project files
             project_files = self._prepare_project_files(result["results"])
             
             # Step 3: Validate and package
-            self._update_job_status(job_id, "in_progress", "validating")
+            await self._update_job_status(job_id, "in_progress", "validating")
             
             validation_result = await self.execution_service.validate_app_runs(project_files)
             if not validation_result["valid"]:
-                self._update_job_status(
+                await self._update_job_status(
                     job_id,
                     "failed",
                     "validating",
@@ -68,11 +69,11 @@ class Orchestrator:
                 return
             
             # Step 4: Create ZIP package
-            self._update_job_status(job_id, "in_progress", "packaging")
+            await self._update_job_status(job_id, "in_progress", "packaging")
             zip_path = await self.execution_service.zip_project_output(project_files, job_id)
             
             # Update with download URL (in production, upload to S3 or similar)
-            self._update_job_status(
+            await self._update_job_status(
                 job_id,
                 "in_progress",
                 "deploying",
@@ -88,7 +89,7 @@ class Orchestrator:
                 )
                 
                 if github_result["success"]:
-                    self._update_job_status(
+                    await self._update_job_status(
                         job_id,
                         "in_progress",
                         "deploying",
@@ -102,7 +103,7 @@ class Orchestrator:
             # deployment_url = await self.github_service.trigger_deploy(job_id)
             
             # Complete
-            self._update_job_status(
+            await self._update_job_status(
                 job_id,
                 "complete",
                 "complete",
@@ -110,7 +111,7 @@ class Orchestrator:
             )
             
         except Exception as e:
-            self._update_job_status(
+            await self._update_job_status(
                 job_id,
                 "failed",
                 "error",
@@ -137,27 +138,23 @@ class Orchestrator:
         
         return project_files
     
-    def _update_job_status(
+    async def _update_job_status(
         self,
         job_id: str,
         status: str,
         step: str,
-        download_url: str = None,
-        github_url: str = None,
-        deployment_url: str = None,
-        error: str = None
+        download_url: Optional[str] = None,
+        github_url: Optional[str] = None,
+        deployment_url: Optional[str] = None,
+        error: Optional[str] = None
     ):
         """
-        Update job status using shared storage.
-        
-        In production, this would update a database.
+        Update job status using shared storage and broadcast via WebSocket.
         """
-        from app.storage import get_job
-        
         # Get current job to preserve existing URLs
-        current_job = get_job(job_id) or {}
+        current_job = await get_job(job_id) or {}
         
-        update_job(
+        await update_job(
             job_id=job_id,
             status=status,
             step=step,
@@ -166,4 +163,23 @@ class Orchestrator:
             deployment_url=deployment_url or current_job.get("deployment_url"),
             error=error
         )
+        
+        # Broadcast update via WebSocket if manager is available
+        if self.websocket_manager:
+            try:
+                await self.websocket_manager.broadcast_to_job(job_id, {
+                    "type": "status_update",
+                    "data": {
+                        "job_id": job_id,
+                        "status": status,
+                        "step": step,
+                        "download_url": download_url or current_job.get("download_url"),
+                        "github_url": github_url or current_job.get("github_url"),
+                        "deployment_url": deployment_url or current_job.get("deployment_url"),
+                        "error": error
+                    }
+                })
+            except Exception as e:
+                # WebSocket errors shouldn't block job updates
+                print(f"WebSocket broadcast error: {e}")
 
