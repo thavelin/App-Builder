@@ -103,6 +103,11 @@ async def generate_app(
     Requires authentication. Returns a job_id that can be used to poll for status.
     """
     import sys
+    print("\n" + "="*80, flush=True)
+    print("[Generate] ===== ENDPOINT CALLED =====", flush=True)
+    print(f"[Generate] Timestamp: {__import__('datetime').datetime.now()}", flush=True)
+    print("="*80 + "\n", flush=True)
+    
     job_id = str(uuid.uuid4())
     
     try:
@@ -166,17 +171,25 @@ async def generate_app(
             for att in request.attachments
         ]
     
-    background_tasks.add_task(
-        orchestrator.generate_app,
-        job_id,
-        request.prompt,
-        review_threshold=request.review_threshold,
-        attachments=attachments_dict
-    )
-    print(f"[Generate] Background task started. Returning job_id to client.", flush=True)
-    print(f"[Generate] ===== REQUEST HANDLED =====", flush=True)
-    
-    return GenerateResponse(job_id=job_id)
+    try:
+        background_tasks.add_task(
+            orchestrator.generate_app,
+            job_id,
+            request.prompt,
+            review_threshold=request.review_threshold,
+            attachments=attachments_dict
+        )
+        print(f"[Generate] Background task started. Returning job_id to client.", flush=True)
+        print(f"[Generate] ===== REQUEST HANDLED =====", flush=True)
+        print(f"[Generate] Returning job_id: {job_id}\n", flush=True)
+        
+        return GenerateResponse(job_id=job_id)
+    except Exception as e:
+        import traceback
+        print(f"[Generate] ERROR in generate_app endpoint: {e}", flush=True)
+        print(f"[Generate] Traceback:", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise
 
 
 @router.get("/status/{job_id}", response_model=StatusResponse)

@@ -44,6 +44,16 @@ cp .env.example .env
 
 # Run the server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Run Backend
+cd backend
+# Create virtual environment
+python -m venv venv
+# Activate virtual environment
+# On Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Backend will be available at: `http://localhost:8000`
@@ -69,6 +79,11 @@ cp .env.local.example .env.local
 # NEXT_PUBLIC_API_URL=http://localhost:8000
 
 # Run the development server
+npm run dev
+
+# Run the Frontend server
+cd frontend
+npm install
 npm run dev
 ```
 

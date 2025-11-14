@@ -20,12 +20,20 @@ export default function Home(): React.JSX.Element {
   const handleSubmit = async (
     payload: { prompt: string; threshold: number; attachments: Attachment[] }
   ) => {
+    console.log('[Home] Submit button clicked', { prompt: payload.prompt.substring(0, 50), hasToken: !!token })
     setIsSubmitting(true)
 
     try {
       // Use longer timeout for requests with attachments (images can be large)
       const hasAttachments = payload.attachments && payload.attachments.length > 0
       const timeout = hasAttachments ? 60000 : 30000 // 60s for attachments, 30s otherwise
+      
+      console.log('[Home] Sending request to:', `${API_BASE_URL}/api/generate`)
+      console.log('[Home] Request payload:', { 
+        promptLength: payload.prompt.length, 
+        threshold: payload.threshold,
+        attachments: hasAttachments ? payload.attachments.length : 0 
+      })
       
       const data = await fetchWithRetry(
         `${API_BASE_URL}/api/generate`,
@@ -39,10 +47,12 @@ export default function Home(): React.JSX.Element {
           }),
           timeout: timeout,
           onProgress: (message) => {
-            console.log(message)
+            console.log('[Home] Progress:', message)
           },
         }
       )
+      
+      console.log('[Home] Request successful, received job_id:', data.job_id)
 
       toast.success('Build started successfully!')
       router.push(`/status/${data.job_id}`)

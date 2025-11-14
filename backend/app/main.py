@@ -4,9 +4,10 @@ Main FastAPI application entry point.
 import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.routes import generate, auth, websockets
 from app.models import init_db
 from app.config import settings
@@ -33,6 +34,25 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# Request logging middleware
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        import datetime
+        print(f"\n[{datetime.datetime.now().strftime('%H:%M:%S')}] {request.method} {request.url.path}", flush=True)
+        if request.url.query:
+            print(f"  Query: {request.url.query}", flush=True)
+        try:
+            response = await call_next(request)
+            print(f"  → Status: {response.status_code}", flush=True)
+            return response
+        except Exception as e:
+            print(f"  → ERROR: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            raise
+
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS middleware for frontend communication
 app.add_middleware(
