@@ -1,0 +1,108 @@
+# AI App Builder - Frontend
+
+Next.js frontend application for the AI-powered multi-agent app builder.
+
+## Features
+
+- **Clean, Modern UI**: Built with Tailwind CSS and Next.js App Router
+- **Real-time Status Updates**: Polls backend for build status
+- **Progress Indicators**: Visual step-by-step progress display
+- **Build Artifacts**: Download ZIP, view GitHub repo, and access deployment links
+- **Mobile-friendly**: Responsive design that works on all devices
+
+## Project Structure
+
+```
+frontend/
+├── app/
+│   ├── layout.tsx           # Root layout
+│   ├── page.tsx             # Main page with prompt input
+│   ├── status/[id]/page.tsx # Status page for job tracking
+│   └── globals.css          # Global styles
+├── components/
+│   ├── PromptForm.tsx       # Prompt input form
+│   ├── LoadingSteps.tsx     # Progress indicator component
+│   └── BuildResult.tsx      # Results display component
+├── package.json
+└── README.md
+```
+
+## Installation
+
+1. **Install dependencies**:
+
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+```
+
+2. **Set up environment variables** (optional):
+
+Create a `.env.local` file:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+3. **Run the development server**:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Usage
+
+1. Enter a natural language prompt describing the app you want to build
+2. Click "Generate App" to start the generation process
+3. You'll be redirected to a status page that shows real-time progress
+4. Once complete, download the ZIP file, view the GitHub repository, or access the deployed app
+
+## Development
+
+### Building for Production
+
+```bash
+npm run build
+npm start
+```
+
+### Linting
+
+```bash
+npm run lint
+```
+
+## Styling
+
+This project uses:
+- **Tailwind CSS** for utility-first styling
+- **Dark mode** support via CSS variables
+- **Responsive design** with mobile-first approach
+
+## API Integration
+
+The frontend communicates with the backend API at `http://localhost:8000` by default. Make sure the backend is running before starting the frontend.
+
+### Endpoints Used
+
+- `POST /api/generate` - Start app generation
+- `GET /api/status/{job_id}` - Get job status (polled every 2 seconds)
+
+## Next Steps
+
+- [ ] Add error handling and retry logic
+- [ ] Implement WebSocket for real-time updates (instead of polling)
+- [ ] Add authentication
+- [ ] Add build history/previous builds page
+- [ ] Improve loading states and animations
+- [ ] Add toast notifications
+

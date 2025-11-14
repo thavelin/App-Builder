@@ -1,0 +1,25 @@
+# FastAPI and server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Data validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# OpenAI SDK
+openai==1.3.5
+
+# CORS support (included in FastAPI middleware)
+# Already included in fastapi
+
+# Environment variables
+python-dotenv==1.0.0
+
+# GitHub API (optional, for future implementation)
+# PyGithub==1.59.1
+
+# Testing (optional)
+# pytest==7.4.3
+# pytest-asyncio==0.21.1
+# httpx==0.25.1
+
