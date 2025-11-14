@@ -3,7 +3,7 @@ Project Manager Agent
 
 Breaks down user prompt into tasks and coordinates specialist agents.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.agents.code_agent import CodeAgent
 from app.agents.ui_agent import UIAgent
 from app.agents.usability_agent import UsabilityAgent
@@ -85,12 +85,25 @@ class ProjectManagerAgent:
         
         return results
     
-    async def coordinate_generation(self, prompt: str, max_iterations: int = 3) -> Dict[str, Any]:
+    async def coordinate_generation(
+        self,
+        prompt: str,
+        max_iterations: int = 3,
+        review_threshold: int = 80,
+        attachments: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
         """
         Main coordination method that iterates until Reviewer approves.
         
         Returns final approved result or raises exception if max iterations reached.
         """
+        # Set the review threshold on the reviewer agent
+        self.reviewer_agent.approval_threshold = review_threshold
+        print(f"  [ProjectManager] Review threshold set to: {review_threshold}", flush=True)
+        
+        if attachments:
+            print(f"  [ProjectManager] Received {len(attachments)} attachment(s) (not yet processed)", flush=True)
+        
         print("  [ProjectManager] Breaking down prompt into tasks...", flush=True)
         tasks = await self.break_down_prompt(prompt)
         print(f"  [ProjectManager] Created {len(tasks)} tasks", flush=True)

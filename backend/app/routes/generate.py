@@ -81,6 +81,14 @@ async def generate_app(
     """
     job_id = str(uuid.uuid4())
     
+    # Log attachments if provided
+    if request.attachments:
+        print(f"[Generate] Job {job_id} received {len(request.attachments)} attachment(s)", flush=True)
+        for att in request.attachments:
+            print(f"  - {att.name} ({att.type}, {len(att.content)} bytes base64)", flush=True)
+    else:
+        print(f"[Generate] Job {job_id} - no attachments", flush=True)
+    
     # Initialize job status
     await set_job(job_id, {
         "status": "pending",
@@ -94,7 +102,13 @@ async def generate_app(
     
     # Start generation in background
     orchestrator = Orchestrator(manager)
-    background_tasks.add_task(orchestrator.generate_app, job_id, request.prompt)
+    background_tasks.add_task(
+        orchestrator.generate_app,
+        job_id,
+        request.prompt,
+        review_threshold=request.review_threshold,
+        attachments=request.attachments
+    )
     
     return GenerateResponse(job_id=job_id)
 

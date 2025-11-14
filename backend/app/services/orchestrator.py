@@ -4,7 +4,7 @@ Orchestrator Service
 Multi-agent workflow controller that coordinates the entire generation process.
 """
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from app.agents.project_manager import ProjectManagerAgent
 from app.services.execution import ExecutionService
 from app.services.github import GitHubService
@@ -27,7 +27,13 @@ class Orchestrator:
         self.github_service = GitHubService()
         self.websocket_manager = websocket_manager
     
-    async def generate_app(self, job_id: str, prompt: str):
+    async def generate_app(
+        self,
+        job_id: str,
+        prompt: str,
+        review_threshold: int = 80,
+        attachments: Optional[List[Dict[str, Any]]] = None
+    ):
         """
         Main orchestration method for app generation.
         
@@ -45,7 +51,14 @@ class Orchestrator:
             
             await self._update_job_status(job_id, "in_progress", "design")
             print(f"[Job {job_id}] Phase: DESIGN - Coordinating multi-agent generation...", flush=True)
-            result = await self.project_manager.coordinate_generation(prompt)
+            print(f"[Job {job_id}] Review threshold set to: {review_threshold}", flush=True)
+            if attachments:
+                print(f"[Job {job_id}] Processing {len(attachments)} attachment(s)", flush=True)
+            result = await self.project_manager.coordinate_generation(
+                prompt,
+                review_threshold=review_threshold,
+                attachments=attachments
+            )
             
             print(f"[Job {job_id}] Design phase complete. Approved: {result.get('approved')}, Iterations: {result.get('iterations', 0)}", flush=True)
             

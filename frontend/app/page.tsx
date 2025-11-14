@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import PromptForm from '@/components/PromptForm'
+import PromptForm, { Attachment } from '@/components/PromptForm'
 import { useToast } from '@/hooks/useToast'
 import { ToastContainer } from '@/components/Toast'
 
@@ -14,7 +14,10 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const toast = useToast()
 
-  const handleSubmit = async (prompt: string, retryCount = 0) => {
+  const handleSubmit = async (
+    payload: { prompt: string; threshold: number; attachments: Attachment[] },
+    retryCount = 0
+  ) => {
     setIsSubmitting(true)
     const maxRetries = 3
 
@@ -24,7 +27,11 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt: payload.prompt,
+          review_threshold: payload.threshold,
+          attachments: payload.attachments.length > 0 ? payload.attachments : undefined,
+        }),
       })
 
       if (!response.ok) {
@@ -42,7 +49,7 @@ export default function Home() {
       if (retryCount < maxRetries) {
         // Retry with exponential backoff
         setTimeout(() => {
-          handleSubmit(prompt, retryCount + 1)
+          handleSubmit(payload, retryCount + 1)
         }, 1000 * Math.pow(2, retryCount))
       } else {
         toast.error(`Failed to start generation after ${maxRetries} attempts: ${errorMessage}`)
