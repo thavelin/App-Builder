@@ -172,16 +172,35 @@ async def generate_app(
         ]
     
     try:
-        background_tasks.add_task(
-            orchestrator.generate_app,
-            job_id,
-            request.prompt,
-            review_threshold=request.review_threshold,
-            attachments=attachments_dict
-        )
-        print(f"[Generate] Background task started. Returning job_id to client.", flush=True)
+        print(f"[Generate] Adding background task for job {job_id}...", flush=True)
+        import sys
+        sys.stdout.flush()
+        
+        # Create a wrapper to ensure logging works
+        async def run_generation():
+            import sys
+            sys.stdout.flush()
+            print(f"[Generate] Background task STARTED for job {job_id}", flush=True)
+            sys.stdout.flush()
+            try:
+                await orchestrator.generate_app(
+                    job_id,
+                    request.prompt,
+                    review_threshold=request.review_threshold,
+                    attachments=attachments_dict
+                )
+            except Exception as e:
+                import traceback
+                print(f"[Generate] Background task ERROR for job {job_id}: {e}", flush=True)
+                print(traceback.format_exc(), flush=True)
+                sys.stdout.flush()
+                raise
+        
+        background_tasks.add_task(run_generation)
+        print(f"[Generate] Background task added. Returning job_id to client.", flush=True)
         print(f"[Generate] ===== REQUEST HANDLED =====", flush=True)
         print(f"[Generate] Returning job_id: {job_id}\n", flush=True)
+        sys.stdout.flush()
         
         return GenerateResponse(job_id=job_id)
     except Exception as e:

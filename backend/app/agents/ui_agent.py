@@ -37,13 +37,24 @@ class UIAgent:
         start_time = time.time()
         print(f"    [UIAgent] ===== Starting UX plan generation =====", flush=True)
         print(f"    [UIAgent] Generating UX plan from AppSpec...", flush=True)
-        print(f"    [UIAgent] Model: {self.model}", flush=True)
         
+        # Check if architect_spec with ux_details exists - use it directly
+        architect_spec = getattr(app_spec, 'architect_spec', None) or app_spec.to_dict().get('architect_spec')
+        if architect_spec and architect_spec.get('ux_details'):
+            print(f"    [UIAgent] Using ARCHITECT_SPEC.ux_details directly (no API call needed)", flush=True)
+            ux_plan = self._convert_ux_details_to_plan(architect_spec['ux_details'], architect_spec)
+            duration = time.time() - start_time
+            print(f"    [UIAgent] ✓ UX plan generated from ARCHITECT_SPEC in {duration:.2f}s", flush=True)
+            print(f"    [UIAgent] ✓ Generated UX plan with {len(ux_plan.get('views', []))} views", flush=True)
+            print(f"    [UIAgent] ===== UX plan generation finished =====", flush=True)
+            return ux_plan
+        
+        # If no OpenAI client, use fallback immediately
         if not self.client:
-            error_msg = "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
-            print(f"    [UIAgent] ERROR: {error_msg}", flush=True)
-            raise ValueError(error_msg)
+            print(f"    [UIAgent] OpenAI API key not configured, using fallback UX plan", flush=True)
+            return self._fallback_ux_plan(app_spec)
         
+        print(f"    [UIAgent] Model: {self.model}", flush=True)
         print(f"    [UIAgent] OpenAI client initialized", flush=True)
         
         system_prompt = """You are a UX/UI design expert. Your job is to create a concrete UX plan from an application specification.
@@ -153,17 +164,128 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
             print(f"    [UIAgent] Using fallback UX plan", flush=True)
             return self._fallback_ux_plan(app_spec)
     
-    def _fallback_ux_plan(self, app_spec: "AppSpec") -> Dict[str, Any]:
-        """Generate a basic fallback UX plan."""
+    def _convert_ux_details_to_plan(self, ux_details: Dict[str, Any], architect_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert ARCHITECT_SPEC.ux_details directly into a UX plan structure.
+        This avoids unnecessary API calls when the spec already contains UX information.
+        """
         views = []
-        for view in app_spec.views:
-            views.append({
-                "name": view.name,
-                "layout_sections": ["header", "main", "footer"],
-                "components": ["Navigation", "Content"],
-                "primary_actions": view.primary_actions,
-                "description": view.purpose
+        component_library = []
+        all_components = set()
+        
+        # Convert ux_details structure to views
+        for view_name, view_details in ux_details.items():
+            if isinstance(view_details, list):
+                # List format: ["item1", "item2", ...]
+                components = []
+                layout_sections = []
+                primary_actions = []
+                
+                for item in view_details:
+                    item_lower = item.lower()
+                    if any(keyword in item_lower for keyword in ['button', 'click', 'action', 'submit', 'delete', 'save', 'edit', 'create', 'add']):
+                        primary_actions.append(item)
+                    elif any(keyword in item_lower for keyword in ['header', 'footer', 'sidebar', 'nav', 'main', 'panel', 'section']):
+                        layout_sections.append(item)
+                    else:
+                        components.append(item)
+                        all_components.add(item)
+                
+                # Default sections if none specified
+                if not layout_sections:
+                    if 'sidebar' in view_name.lower() or 'nav' in view_name.lower():
+                        layout_sections = ['sidebar', 'main']
+                    else:
+                        layout_sections = ['header', 'main', 'footer']
+                
+                views.append({
+                    "name": view_name.replace('_', ' ').title(),
+                    "layout_sections": layout_sections,
+                    "components": components if components else ["Content"],
+                    "primary_actions": primary_actions,
+                    "description": f"View for {view_name}"
+                })
+            elif isinstance(view_details, dict):
+                # Dict format: {"sections": [...], "components": [...], ...}
+                views.append({
+                    "name": view_name.replace('_', ' ').title(),
+                    "layout_sections": view_details.get("sections", ["header", "main", "footer"]),
+                    "components": view_details.get("components", ["Content"]),
+                    "primary_actions": view_details.get("actions", []),
+                    "description": view_details.get("description", f"View for {view_name}")
+                })
+                all_components.update(view_details.get("components", []))
+        
+        # Build component library from collected components
+        for comp in all_components:
+            comp_lower = comp.lower()
+            comp_type = "container"
+            if any(kw in comp_lower for kw in ['button', 'link', 'nav']):
+                comp_type = "navigation"
+            elif any(kw in comp_lower for kw in ['form', 'input', 'field']):
+                comp_type = "form"
+            elif any(kw in comp_lower for kw in ['list', 'table', 'grid']):
+                comp_type = "display"
+            
+            component_library.append({
+                "name": comp,
+                "type": comp_type,
+                "description": f"Component for {comp}",
+                "used_in": [v["name"] for v in views if comp in v.get("components", [])]
             })
+        
+        # Determine entry point from requirements.layout if available
+        entry_point = views[0]["name"] if views else "Home"
+        requirements = architect_spec.get('requirements', {})
+        layout = requirements.get('layout', '')
+        if 'sidebar' in layout.lower():
+            # Find sidebar view
+            sidebar_view = next((v for v in views if 'sidebar' in v["name"].lower() or 'nav' in v["name"].lower()), None)
+            if sidebar_view:
+                entry_point = sidebar_view["name"]
+        
+        return {
+            "views": views,
+            "navigation_flow": {
+                "entry_point": entry_point,
+                "routes": []
+            },
+            "component_library": component_library if component_library else [
+                {"name": "Content", "type": "container", "description": "Main content area", "used_in": [v["name"] for v in views]}
+            ]
+        }
+    
+    def _fallback_ux_plan(self, app_spec: "AppSpec") -> Dict[str, Any]:
+        """
+        Generate a fallback UX plan.
+        First tries to use architect_spec.ux_details if available, otherwise uses AppSpec.views.
+        """
+        # Try to use architect_spec.ux_details first
+        architect_spec = getattr(app_spec, 'architect_spec', None) or app_spec.to_dict().get('architect_spec')
+        if architect_spec and architect_spec.get('ux_details'):
+            print(f"    [UIAgent] Using ARCHITECT_SPEC.ux_details for fallback plan", flush=True)
+            return self._convert_ux_details_to_plan(architect_spec['ux_details'], architect_spec)
+        
+        # Fallback to AppSpec.views if available
+        views = []
+        if hasattr(app_spec, 'views') and app_spec.views:
+            for view in app_spec.views:
+                views.append({
+                    "name": view.name,
+                    "layout_sections": ["header", "main", "footer"],
+                    "components": ["Navigation", "Content"],
+                    "primary_actions": view.primary_actions if hasattr(view, 'primary_actions') else [],
+                    "description": view.purpose if hasattr(view, 'purpose') else f"View: {view.name}"
+                })
+        else:
+            # Ultimate fallback: create a single view
+            views = [{
+                "name": "Main",
+                "layout_sections": ["header", "main", "footer"],
+                "components": ["Content"],
+                "primary_actions": [],
+                "description": "Main application view"
+            }]
         
         return {
             "views": views,
@@ -172,7 +294,8 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                 "routes": []
             },
             "component_library": [
-                {"name": "Navigation", "type": "navigation", "description": "Main navigation", "used_in": [v["name"] for v in views]}
+                {"name": "Navigation", "type": "navigation", "description": "Main navigation", "used_in": [v["name"] for v in views]},
+                {"name": "Content", "type": "container", "description": "Main content area", "used_in": [v["name"] for v in views]}
             ]
         }
     

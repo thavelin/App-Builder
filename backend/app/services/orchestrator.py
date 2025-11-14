@@ -43,6 +43,11 @@ class Orchestrator:
         Each step is wrapped in try/except to prevent silent failures.
         """
         import traceback
+        import sys
+        
+        # Force immediate output
+        sys.stdout.flush()
+        sys.stderr.flush()
         
         # Step 1: Design phase
         start_time = time.time()
@@ -51,6 +56,7 @@ class Orchestrator:
             print(f"Starting generation for job {job_id}", flush=True)
             print(f"Prompt: {prompt[:100]}...", flush=True)
             print(f"{'='*60}\n", flush=True)
+            sys.stdout.flush()
             
             # Early validation: Check OpenAI API key
             from app.config import settings

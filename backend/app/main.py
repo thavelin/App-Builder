@@ -39,17 +39,23 @@ app = FastAPI(
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         import datetime
-        print(f"\n[{datetime.datetime.now().strftime('%H:%M:%S')}] {request.method} {request.url.path}", flush=True)
+        import sys
+        timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+        print(f"\n[{timestamp}] {request.method} {request.url.path}", flush=True)
+        sys.stdout.flush()
         if request.url.query:
             print(f"  Query: {request.url.query}", flush=True)
+            sys.stdout.flush()
         try:
             response = await call_next(request)
             print(f"  → Status: {response.status_code}", flush=True)
+            sys.stdout.flush()
             return response
         except Exception as e:
             print(f"  → ERROR: {e}", flush=True)
             import traceback
             traceback.print_exc()
+            sys.stdout.flush()
             raise
 
 app.add_middleware(RequestLoggingMiddleware)

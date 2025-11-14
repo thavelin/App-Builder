@@ -110,10 +110,18 @@ class ProjectManagerAgent:
         print(f"    Goal: {app_spec.goal}", flush=True)
         print(f"    Features: {', '.join(app_spec.core_features[:3])}{'...' if len(app_spec.core_features) > 3 else ''}", flush=True)
         
-        # Step 2: Generate UX plan from AppSpec
+        # Step 2: Generate UX plan from AppSpec (with error handling)
         print("  [ProjectManager] Step 2: Generating UX plan from AppSpec...", flush=True)
-        ux_plan = await self.ui_agent.generate_ux_plan(app_spec)
-        print(f"  [ProjectManager] ✓ UX plan generated with {len(ux_plan.get('views', []))} views", flush=True)
+        try:
+            ux_plan = await self.ui_agent.generate_ux_plan(app_spec)
+            print(f"  [ProjectManager] ✓ UX plan generated with {len(ux_plan.get('views', []))} views", flush=True)
+        except Exception as e:
+            import traceback
+            print(f"  [ProjectManager] WARNING: UX plan generation failed: {e}", flush=True)
+            print(f"  [ProjectManager] Using fallback UX plan to continue...", flush=True)
+            print(traceback.format_exc(), flush=True)
+            ux_plan = self.ui_agent._fallback_ux_plan(app_spec)
+            print(f"  [ProjectManager] ✓ Fallback UX plan generated with {len(ux_plan.get('views', []))} views", flush=True)
         
         # Initialize iteration state
         previous_code = None
