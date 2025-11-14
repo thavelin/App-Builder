@@ -102,15 +102,23 @@ async def generate_app(
     
     Requires authentication. Returns a job_id that can be used to poll for status.
     """
+    import sys
     job_id = str(uuid.uuid4())
     
-    # Log attachments if provided
-    if request.attachments:
-        print(f"[Generate] Job {job_id} received {len(request.attachments)} attachment(s)", flush=True)
-        for att in request.attachments:
-            print(f"  - {att.name} ({att.type}, {len(att.content)} bytes base64)", flush=True)
-    else:
-        print(f"[Generate] Job {job_id} - no attachments", flush=True)
+    try:
+        # Log attachments if provided
+        if request.attachments:
+            total_size = sum(len(att.content) for att in request.attachments)
+            print(f"[Generate] Job {job_id} received {len(request.attachments)} attachment(s), total size: {total_size:,} bytes", flush=True)
+            for att in request.attachments:
+                size_mb = len(att.content) / (1024 * 1024)
+                print(f"  - {att.name} ({att.type}, {len(att.content):,} bytes / {size_mb:.2f} MB base64)", flush=True)
+        else:
+            print(f"[Generate] Job {job_id} - no attachments", flush=True)
+    except Exception as e:
+        print(f"[Generate] ERROR logging attachments: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
     
     # Initialize job status with user_id
     print(f"\n[Generate] ===== NEW GENERATION REQUEST =====", flush=True)

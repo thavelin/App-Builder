@@ -56,6 +56,7 @@ class RequirementsAgent:
         
         # Build context about attachments if provided
         attachment_context = ""
+        image_attachments = []
         if attachments:
             attachment_context = f"\n\nUser provided {len(attachments)} attachment(s):\n"
             for att in attachments:
@@ -66,29 +67,58 @@ class RequirementsAgent:
                     try:
                         att_name = att.name
                         att_type = att.type
+                        att_content = att.content
                     except AttributeError:
                         # Fallback: try to convert to dict
                         if hasattr(att, 'model_dump'):
                             att_dict = att.model_dump()
                             att_name = att_dict.get('name', 'unknown')
                             att_type = att_dict.get('type', 'unknown')
+                            att_content = att_dict.get('content', '')
                         else:
                             att_name = 'unknown'
                             att_type = 'unknown'
+                            att_content = ''
                 elif isinstance(att, dict):
                     # Dictionary - use .get()
                     att_name = att.get('name', 'unknown')
                     att_type = att.get('type', 'unknown')
+                    att_content = att.get('content', '')
                 else:
                     # Unknown type - try attribute access first, then dict access
                     try:
                         att_name = getattr(att, 'name', 'unknown')
                         att_type = getattr(att, 'type', 'unknown')
+                        att_content = getattr(att, 'content', '')
                     except:
                         att_name = 'unknown'
                         att_type = 'unknown'
+                        att_content = ''
+                
                 attachment_context += f"- {att_name} ({att_type})\n"
-            attachment_context += "\nConsider these attachments when understanding requirements, but focus on the text prompt as primary source."
+                
+                # Check if it's an image attachment
+                if att_type and att_type.startswith('image/') and att_content:
+                    # Determine data URL format based on content
+                    if att_content.startswith('data:'):
+                        # Already a data URL
+                        image_url = att_content
+                    else:
+                        # Base64 content, create data URL
+                        image_url = f"data:{att_type};base64,{att_content}"
+                    
+                    image_attachments.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url
+                        }
+                    })
+                    print(f"    [RequirementsAgent] Added image attachment: {att_name} ({att_type})", flush=True)
+            
+            if not image_attachments:
+                attachment_context += "\nConsider these attachments when understanding requirements, but focus on the text prompt as primary source."
+            else:
+                attachment_context += f"\nThe user has provided {len(image_attachments)} image(s). Please analyze the image(s) carefully when understanding the requirements."
         
         system_prompt = """You are an expert software architect (ARCHITECT phase). Your job is to expand the user's APP_BRIEF into a detailed ARCHITECT_SPEC JSON.
 
@@ -164,13 +194,29 @@ Guidelines:
 End with ARCHITECT_SPEC_END. Return ONLY the JSON between the markers, no markdown code blocks."""
 
         try:
-            print(f"    [RequirementsAgent] Calling OpenAI API (model: {self.model}, max_tokens: 2000)...", flush=True)
+            # Build user message content - include images if present
+            user_message_content = [{"type": "text", "text": user_prompt}]
+            if image_attachments:
+                user_message_content.extend(image_attachments)
+                # Use vision-capable model if images are present
+                # Check if current model supports vision
+                if "gpt-4o" in self.model.lower() or "vision" in self.model.lower() or "gpt-4-turbo" in self.model.lower():
+                    # Model already supports vision
+                    actual_model = self.model
+                else:
+                    # Switch to a vision-capable model
+                    actual_model = "gpt-4o"  # gpt-4o has built-in vision support
+                    print(f"    [RequirementsAgent] Images detected, switching from {self.model} to {actual_model} for vision support.", flush=True)
+            else:
+                actual_model = self.model
+            
+            print(f"    [RequirementsAgent] Calling OpenAI API (model: {actual_model}, max_tokens: 2000, images: {len(image_attachments)})...", flush=True)
             api_start = time.time()
             response = await self.client.chat.completions.create(
-                model=self.model,
+                model=actual_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_message_content if image_attachments else user_prompt}
                 ],
                 temperature=0.3,  # Lower temperature for more consistent extraction
                 max_tokens=2000

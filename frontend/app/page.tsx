@@ -23,6 +23,10 @@ export default function Home(): React.JSX.Element {
     setIsSubmitting(true)
 
     try {
+      // Use longer timeout for requests with attachments (images can be large)
+      const hasAttachments = payload.attachments && payload.attachments.length > 0
+      const timeout = hasAttachments ? 60000 : 30000 // 60s for attachments, 30s otherwise
+      
       const data = await fetchWithRetry(
         `${API_BASE_URL}/api/generate`,
         {
@@ -31,8 +35,9 @@ export default function Home(): React.JSX.Element {
           body: JSON.stringify({
             prompt: payload.prompt,
             review_threshold: payload.threshold,
-            attachments: payload.attachments.length > 0 ? payload.attachments : undefined,
+            attachments: hasAttachments ? payload.attachments : undefined,
           }),
+          timeout: timeout,
           onProgress: (message) => {
             console.log(message)
           },
@@ -42,8 +47,17 @@ export default function Home(): React.JSX.Element {
       toast.success('Build started successfully!')
       router.push(`/status/${data.job_id}`)
     } catch (error) {
-      console.error('Error:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error('Error starting generation:', error)
+      let errorMessage = 'Unknown error'
+      if (error instanceof Error) {
+        errorMessage = error.message
+        // Check if it's a timeout error
+        if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out. The image may be too large or the server is taking too long to respond.'
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorMessage = 'Network error. Please check if the backend is running.'
+        }
+      }
       toast.error(`Failed to start generation: ${errorMessage}`)
       setIsSubmitting(false)
     }
