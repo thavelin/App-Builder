@@ -27,6 +27,7 @@ export function useWebSocket({
   reconnectInterval = 3000,
 }: UseWebSocketOptions) {
   const [isConnected, setIsConnected] = useState(false)
+  const [hasReceivedMessage, setHasReceivedMessage] = useState(false)
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -54,41 +55,56 @@ export function useWebSocket({
     try {
       // Convert http(s) to ws(s)
       const wsUrl = url.replace(/^http/, 'ws')
+      console.log(`[WebSocket] Connecting to ${wsUrl}`)
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
+        console.log(`[WebSocket] Connection opened to ${wsUrl}`)
+        // Set connected state, but we'll also track if we've received messages
         setIsConnected(true)
+        setHasReceivedMessage(false) // Reset on new connection
         onOpenRef.current?.()
       }
 
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data)
+          console.log(`[WebSocket] Received message:`, message)
           setLastMessage(message)
+          setHasReceivedMessage(true) // Mark that we've received at least one message
           onMessageRef.current?.(message)
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error)
+          console.error('[WebSocket] Failed to parse WebSocket message:', error, event.data)
         }
       }
 
       ws.onerror = (error) => {
+        console.error(`[WebSocket] Error on connection to ${wsUrl}:`, error)
+        // On error, mark as not connected so polling can resume
+        setIsConnected(false)
+        setHasReceivedMessage(false)
         onErrorRef.current?.(error)
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.log(`[WebSocket] Connection closed to ${wsUrl}`, { code: event.code, reason: event.reason, wasClean: event.wasClean })
         setIsConnected(false)
+        setHasReceivedMessage(false)
         onCloseRef.current?.()
 
         // Attempt to reconnect if enabled
         if (shouldReconnectRef.current && reconnect) {
           reconnectTimeoutRef.current = setTimeout(() => {
+            console.log(`[WebSocket] Attempting to reconnect to ${wsUrl}`)
             connect()
           }, reconnectInterval)
         }
       }
     } catch (error) {
-      console.error('WebSocket connection error:', error)
+      console.error('[WebSocket] Connection error:', error)
+      setIsConnected(false)
+      setHasReceivedMessage(false)
     }
   }, [url, reconnect, reconnectInterval])
 
@@ -122,6 +138,7 @@ export function useWebSocket({
 
   return {
     isConnected,
+    hasReceivedMessage, // Export this so components can check if messages are actually flowing
     lastMessage,
     sendMessage,
     disconnect,

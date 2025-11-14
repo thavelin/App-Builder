@@ -209,20 +209,25 @@ class Orchestrator:
         
         # Broadcast update via WebSocket if manager is available
         if self.websocket_manager:
+            message = {
+                "type": "status_update",
+                "data": {
+                    "job_id": job_id,
+                    "status": status,
+                    "step": step,
+                    "download_url": download_url or current_job.get("download_url"),
+                    "github_url": github_url or current_job.get("github_url"),
+                    "deployment_url": deployment_url or current_job.get("deployment_url"),
+                    "error": error
+                }
+            }
+            print(f"[Job {job_id}] Broadcasting WebSocket update: status={status}, step={step}", flush=True)
             try:
-                await self.websocket_manager.broadcast_to_job(job_id, {
-                    "type": "status_update",
-                    "data": {
-                        "job_id": job_id,
-                        "status": status,
-                        "step": step,
-                        "download_url": download_url or current_job.get("download_url"),
-                        "github_url": github_url or current_job.get("github_url"),
-                        "deployment_url": deployment_url or current_job.get("deployment_url"),
-                        "error": error
-                    }
-                })
+                await self.websocket_manager.broadcast_to_job(job_id, message)
+                print(f"[Job {job_id}] WebSocket broadcast successful", flush=True)
             except Exception as e:
                 # WebSocket errors shouldn't block job updates
-                print(f"WebSocket broadcast error: {e}")
+                print(f"[Job {job_id}] WebSocket broadcast error: {e}", flush=True)
+                import traceback
+                print(traceback.format_exc(), flush=True)
 

@@ -45,16 +45,25 @@ class ConnectionManager:
     async def broadcast_to_job(self, job_id: str, message: dict):
         """Broadcast a message to all connections for a specific job."""
         if job_id in self.active_connections:
+            connection_count = len(self.active_connections[job_id])
+            print(f"[WebSocket] Broadcasting to {connection_count} connection(s) for job {job_id}", flush=True)
             disconnected = []
+            sent_count = 0
             for connection in self.active_connections[job_id]:
                 try:
                     await connection.send_json(message)
-                except Exception:
+                    sent_count += 1
+                except Exception as e:
+                    print(f"[WebSocket] Failed to send to connection for job {job_id}: {e}", flush=True)
                     disconnected.append(connection)
+            
+            print(f"[WebSocket] Successfully sent to {sent_count}/{connection_count} connection(s) for job {job_id}", flush=True)
             
             # Remove disconnected connections
             for conn in disconnected:
                 self.disconnect(conn, job_id)
+        else:
+            print(f"[WebSocket] No active connections for job {job_id}", flush=True)
 
 
 manager = ConnectionManager()

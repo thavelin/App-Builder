@@ -76,9 +76,10 @@ export default function StatusPage() {
 
   // WebSocket connection for real-time updates
   const wsUrl = `${API_BASE_URL}/api/ws/status/${jobId}`
-  const { isConnected, lastMessage } = useWebSocket({
+  const { isConnected, hasReceivedMessage, lastMessage } = useWebSocket({
     url: wsUrl,
     onMessage: (message) => {
+      console.log('[StatusPage] WebSocket message received:', message)
       if (message.type === 'status_update' && message.data) {
         setStatusData(message.data)
         setIsLoading(false)
@@ -92,25 +93,30 @@ export default function StatusPage() {
       }
     },
     onError: () => {
+      console.warn('[StatusPage] WebSocket error - falling back to polling')
       // Fallback to polling if WebSocket fails
       // Polling will stop automatically when status is complete or failed
     },
     reconnect: true,
   })
 
-  // Polling fallback (only if WebSocket is not connected and job is still in progress)
+  // Polling fallback - continues even when WebSocket is connected as a backup
+  // Polls at a slower rate (10s) when WebSocket is connected and receiving messages
+  // Polls at normal rate (3s) when WebSocket is not connected or not receiving messages
   useEffect(() => {
-    // Only poll if WebSocket is not connected
-    if (isConnected) {
-      return
-    }
-    
     // Only poll if job is still in progress
     if (!statusData || (statusData.status !== 'in_progress' && statusData.status !== 'pending')) {
       return
     }
     
-    const pollInterval = setInterval(async () => {
+    // Determine polling interval based on WebSocket state
+    // If WebSocket is connected AND we've received at least one message, poll less frequently as backup
+    // Otherwise, poll more frequently as primary update mechanism
+    const pollInterval = isConnected && hasReceivedMessage ? 10000 : 3000
+    
+    console.log(`[StatusPage] Starting polling with interval ${pollInterval}ms (WebSocket: ${isConnected ? 'connected' : 'disconnected'}, received messages: ${hasReceivedMessage})`)
+    
+    const pollIntervalId = setInterval(async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/status/${jobId}`)
         if (!response.ok) {
@@ -118,10 +124,11 @@ export default function StatusPage() {
         }
         
         const currentStatus = await response.json()
+        console.log(`[StatusPage] Polling update: status=${currentStatus.status}, step=${currentStatus.step}`)
         
         // Stop polling if job is complete or failed
         if (currentStatus.status === 'complete' || currentStatus.status === 'failed') {
-          clearInterval(pollInterval)
+          clearInterval(pollIntervalId)
           setStatusData(currentStatus)
           setIsLoading(false)
           
@@ -133,16 +140,24 @@ export default function StatusPage() {
           }
         } else {
           // Update status but keep polling
-          setStatusData(currentStatus)
+          // Only update if status actually changed to avoid unnecessary re-renders
+          if (!statusData || 
+              statusData.status !== currentStatus.status || 
+              statusData.step !== currentStatus.step) {
+            setStatusData(currentStatus)
+          }
         }
       } catch (err) {
         // Ignore polling errors, will retry on next interval
-        console.error('Polling error:', err)
+        console.error('[StatusPage] Polling error:', err)
       }
-    }, 3000)
+    }, pollInterval)
     
-    return () => clearInterval(pollInterval)
-  }, [isConnected, statusData, jobId, toast])
+    return () => {
+      console.log('[StatusPage] Stopping polling')
+      clearInterval(pollIntervalId)
+    }
+  }, [isConnected, hasReceivedMessage, statusData, jobId, toast])
 
   useEffect(() => {
     // Initial fetch
@@ -192,9 +207,19 @@ export default function StatusPage() {
               </div>
               {/* Connection status indicator */}
               <div className="flex items-center space-x-2">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+                <div className={`w-2 h-2 rounded-full ${
+                  isConnected && hasReceivedMessage 
+                    ? 'bg-green-500' 
+                    : isConnected 
+                    ? 'bg-yellow-500' 
+                    : 'bg-gray-400'
+                }`} />
                 <span className="text-sm text-gray-600 dark:text-gray-300">
-                  {isConnected ? 'Live' : 'Polling'}
+                  {isConnected && hasReceivedMessage 
+                    ? 'Live' 
+                    : isConnected 
+                    ? 'Connecting...' 
+                    : 'Polling'}
                 </span>
               </div>
             </div>
