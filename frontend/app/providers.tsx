@@ -1,15 +1,15 @@
 'use client'
 
+import React from 'react'
 import { AuthProvider } from '@/hooks/useAuth'
-import { useToast } from '@/hooks/useToast'
-import { ToastContainer } from '@/components/Toast'
+import { ToastProvider } from '@/components/ToastProvider'
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const toast = useToast()
   return (
     <AuthProvider>
-      <ToastContainer toasts={toast.toasts} removeToast={toast.removeToast} />
-      {children}
+      <ToastProvider>
+        {children}
+      </ToastProvider>
     </AuthProvider>
   )
 }

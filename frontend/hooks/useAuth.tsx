@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, createContext, useContext } from 'react'
+import React, { useState, useEffect, useCallback, createContext, useContext } from 'react'
 import { useRouter } from 'next/navigation'
 import { fetchWithRetry } from '@/utils/fetchWithRetry'
 
@@ -31,19 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
-  // Load token and user from localStorage on mount
-  useEffect(() => {
-    const storedToken = localStorage.getItem('auth_token')
-    if (storedToken) {
-      setToken(storedToken)
-      // Fetch user info
-      fetchUser(storedToken)
-    } else {
-      setIsLoading(false)
-    }
-  }, [])
-
-  const fetchUser = async (authToken: string) => {
+  const fetchUser = useCallback(async (authToken: string) => {
     try {
       const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/me`, {
         headers: {
@@ -59,36 +47,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
+
+  // Load token and user from localStorage on mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem('auth_token')
+    if (storedToken) {
+      setToken(storedToken)
+      // Fetch user info
+      fetchUser(storedToken)
+    } else {
+      setIsLoading(false)
+    }
+  }, [fetchUser])
 
   const login = useCallback(async (email: string, password: string) => {
-    const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    })
-    
-    const authToken = data.access_token
-    localStorage.setItem('auth_token', authToken)
-    setToken(authToken)
-    setUser(data.user)
+    setIsLoading(true)
+    try {
+      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      })
+      
+      const authToken = data.access_token
+      localStorage.setItem('auth_token', authToken)
+      setToken(authToken)
+      setUser(data.user)
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
   const register = useCallback(async (email: string, username: string, password: string) => {
-    const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, username, password }),
-    })
-    
-    const authToken = data.access_token
-    localStorage.setItem('auth_token', authToken)
-    setToken(authToken)
-    setUser(data.user)
+    setIsLoading(true)
+    try {
+      const data = await fetchWithRetry(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, username, password }),
+      })
+      
+      const authToken = data.access_token
+      localStorage.setItem('auth_token', authToken)
+      setToken(authToken)
+      setUser(data.user)
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
   const logout = useCallback(() => {

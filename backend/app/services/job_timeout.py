@@ -72,7 +72,14 @@ async def check_stuck_jobs(timeout_minutes: int = 15):
                         print(f"Failed to broadcast timeout status via WebSocket: {ws_error}", flush=True)
         
         except Exception as e:
-            print(f"Error in stuck job checker: {e}", flush=True)
+            # Don't crash on database schema errors (e.g., during migration)
+            error_msg = str(e)
+            if "no such column" in error_msg.lower() or "operationalerror" in error_msg.lower():
+                print(f"Error in stuck job checker (likely schema migration in progress): {error_msg[:200]}", flush=True)
+            else:
+                print(f"Error in stuck job checker: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
         
         # Check every minute
         await asyncio.sleep(60)

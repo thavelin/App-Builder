@@ -58,11 +58,49 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def init_db():
     """Initialize the database and create tables."""
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, text
     
     async with async_engine.begin() as conn:
         # Create all tables
         await conn.run_sync(SQLModel.metadata.create_all)
+        
+        # Migrate existing tables if needed
+        # Check if jobs table exists and if user_id column is missing
+        try:
+            # Check if jobs table exists
+            result = await conn.execute(text(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='jobs'"
+            ))
+            jobs_table_exists = result.scalar() is not None
+            
+            if jobs_table_exists:
+                # Check if user_id column exists
+                result = await conn.execute(text("PRAGMA table_info(jobs)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'user_id' not in columns:
+                    print("[Database Migration] Adding user_id column to jobs table...", flush=True)
+                    await conn.execute(text(
+                        "ALTER TABLE jobs ADD COLUMN user_id TEXT"
+                    ))
+                    print("[Database Migration] ✓ user_id column added successfully", flush=True)
+        except Exception as e:
+            print(f"[Database Migration] Warning: Could not migrate jobs table: {e}", flush=True)
+        
+        # Check if users table exists, if not create it
+        try:
+            result = await conn.execute(text(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+            ))
+            users_table_exists = result.scalar() is not None
+            
+            if not users_table_exists:
+                print("[Database Migration] Creating users table...", flush=True)
+                # Users table will be created by SQLModel.metadata.create_all above
+                # But we ensure it exists here
+                await conn.run_sync(SQLModel.metadata.create_all)
+        except Exception as e:
+            print(f"[Database Migration] Warning: Could not check/create users table: {e}", flush=True)
 
 
 async def get_session() -> AsyncSession:
