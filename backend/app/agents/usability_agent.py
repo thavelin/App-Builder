@@ -33,7 +33,9 @@ class UsabilityAgent:
         - suggestions: List of improvement suggestions
         - flow_analysis: Analysis of user flow
         """
+        print("    [UsabilityAgent] Starting UX review...", flush=True)
         if not self.client:
+            print("    [UsabilityAgent] OpenAI not configured, using fallback", flush=True)
             # Fallback to placeholder if OpenAI is not configured
             return {
                 "score": 75,

@@ -39,7 +39,9 @@ class ReviewerAgent:
         - issues: List of issues found
         - feedback: Detailed feedback
         """
+        print(f"    [ReviewerAgent] Starting completeness review (iteration {iteration + 1})...", flush=True)
         if not self.client:
+            print("    [ReviewerAgent] OpenAI not configured, using fallback approval", flush=True)
             # Fallback: approve by default on first iteration to avoid blocking progress
             # Still include a warning in issues to inform the user
             score = 85

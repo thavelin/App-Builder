@@ -57,19 +57,31 @@ class ProjectManagerAgent:
             "usability_feedback": None
         }
         
+        print("  [ProjectManager] Executing tasks with specialist agents...", flush=True)
+        
         for task in tasks:
             task_type = task.get("type")
             
             if task_type == "code":
+                print("  [ProjectManager] → Calling CodeAgent.generate_code()...", flush=True)
                 results["code"] = await self.code_agent.generate_code(task["description"])
+                if results["code"]:
+                    file_count = len(results["code"].get("files", []))
+                    print(f"  [CodeAgent] ✓ Generated {file_count} code files", flush=True)
             elif task_type == "ui":
+                print("  [ProjectManager] → Calling UIAgent.generate_ui_design()...", flush=True)
                 results["ui"] = await self.ui_agent.generate_ui_design(task["description"])
+                if results["ui"]:
+                    print(f"  [UIAgent] ✓ Generated UI design", flush=True)
         
         # Get usability feedback
+        print("  [ProjectManager] → Calling UsabilityAgent.review_ux()...", flush=True)
         results["usability_feedback"] = await self.usability_agent.review_ux(
             code_result=results["code"],
             ui_result=results["ui"]
         )
+        if results["usability_feedback"]:
+            print(f"  [UsabilityAgent] ✓ Provided UX feedback", flush=True)
         
         return results
     
@@ -79,20 +91,36 @@ class ProjectManagerAgent:
         
         Returns final approved result or raises exception if max iterations reached.
         """
+        print("  [ProjectManager] Breaking down prompt into tasks...", flush=True)
         tasks = await self.break_down_prompt(prompt)
+        print(f"  [ProjectManager] Created {len(tasks)} tasks", flush=True)
         
         for iteration in range(max_iterations):
+            print(f"\n  [ProjectManager] === Iteration {iteration + 1}/{max_iterations} ===", flush=True)
+            
             # Execute tasks
             results = await self.execute_tasks(tasks)
             
             # Get reviewer feedback
+            print("  [ProjectManager] → Calling ReviewerAgent.review_completeness()...", flush=True)
             review = await self.reviewer_agent.review_completeness(
                 prompt=prompt,
                 results=results,
                 iteration=iteration
             )
             
+            score = review.get("score", 0)
+            approved = review.get("approved", False)
+            issues = review.get("issues", [])
+            
+            print(f"  [ReviewerAgent] Review score: {score}/100, Approved: {approved}", flush=True)
+            if issues:
+                print(f"  [ReviewerAgent] Issues found: {len(issues)}", flush=True)
+                for issue in issues[:3]:  # Show first 3 issues
+                    print(f"    - {issue}", flush=True)
+            
             if review["approved"]:
+                print(f"  [ProjectManager] ✓ Approved after {iteration + 1} iteration(s)", flush=True)
                 return {
                     "approved": True,
                     "results": results,
@@ -102,9 +130,11 @@ class ProjectManagerAgent:
             
             # If not approved, refine tasks based on feedback
             if iteration < max_iterations - 1:
+                print(f"  [ProjectManager] Not approved. Refining tasks for next iteration...", flush=True)
                 tasks = await self._refine_tasks(tasks, review["issues"])
         
         # Max iterations reached without approval
+        print(f"  [ProjectManager] ✗ Maximum iterations ({max_iterations}) reached without approval", flush=True)
         return {
             "approved": False,
             "results": results,

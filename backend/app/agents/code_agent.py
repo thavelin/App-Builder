@@ -36,7 +36,9 @@ class CodeAgent:
         - structure: Project structure information
         - dependencies: Required dependencies
         """
+        print(f"    [CodeAgent] Starting code generation for: {description[:60]}...", flush=True)
         if not self.client:
+            print("    [CodeAgent] OpenAI not configured, using fallback", flush=True)
             # Fallback to placeholder if OpenAI is not configured
             # Include both app.py and root-level main.py for proper entrypoint
             return {

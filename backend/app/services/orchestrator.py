@@ -38,10 +38,19 @@ class Orchestrator:
         
         # Step 1: Design phase
         try:
+            print(f"\n{'='*60}", flush=True)
+            print(f"Starting generation for job {job_id}", flush=True)
+            print(f"Prompt: {prompt[:100]}...", flush=True)
+            print(f"{'='*60}\n", flush=True)
+            
             await self._update_job_status(job_id, "in_progress", "design")
+            print(f"[Job {job_id}] Phase: DESIGN - Coordinating multi-agent generation...", flush=True)
             result = await self.project_manager.coordinate_generation(prompt)
             
+            print(f"[Job {job_id}] Design phase complete. Approved: {result.get('approved')}, Iterations: {result.get('iterations', 0)}", flush=True)
+            
             if not result["approved"]:
+                print(f"[Job {job_id}] Generation rejected by reviewer after {result.get('iterations', 0)} iterations", flush=True)
                 await self._update_job_status(
                     job_id,
                     "failed",
@@ -59,7 +68,9 @@ class Orchestrator:
         # Step 2: Prepare project files
         try:
             await self._update_job_status(job_id, "in_progress", "coding")
+            print(f"[Job {job_id}] Phase: CODING - Preparing project files from agent results...", flush=True)
             project_files = self._prepare_project_files(result["results"])
+            print(f"[Job {job_id}] Prepared {len(project_files)} project files", flush=True)
         except Exception as e:
             error_details = traceback.format_exc()
             print(f"Error preparing project files for job {job_id}:", flush=True)
@@ -70,7 +81,9 @@ class Orchestrator:
         # Step 3: Validate
         try:
             await self._update_job_status(job_id, "in_progress", "validating")
+            print(f"[Job {job_id}] Phase: VALIDATING - Checking entry points and project structure...", flush=True)
             validation_result = await self.execution_service.validate_app_runs(project_files)
+            print(f"[Job {job_id}] Validation result: {'PASSED' if validation_result['valid'] else 'FAILED'}", flush=True)
             if not validation_result["valid"]:
                 # Provide user-friendly error message for missing entrypoint
                 error_message = validation_result.get("error", "Validation failed")
@@ -94,7 +107,9 @@ class Orchestrator:
         # Step 4: Package
         try:
             await self._update_job_status(job_id, "in_progress", "packaging")
+            print(f"[Job {job_id}] Phase: PACKAGING - Creating ZIP archive...", flush=True)
             zip_path = await self.execution_service.zip_project_output(project_files, job_id)
+            print(f"[Job {job_id}] ZIP created at: {zip_path}", flush=True)
             await self._update_job_status(
                 job_id,
                 "in_progress",
@@ -128,6 +143,8 @@ class Orchestrator:
         
         # Step 6: Complete
         try:
+            print(f"[Job {job_id}] Phase: COMPLETE - Job finished successfully!", flush=True)
+            print(f"{'='*60}\n", flush=True)
             await self._update_job_status(
                 job_id,
                 "complete",

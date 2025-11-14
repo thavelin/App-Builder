@@ -33,7 +33,9 @@ class UIAgent:
         - styling: Styling recommendations
         - wireframe: Wireframe description or data
         """
+        print(f"    [UIAgent] Starting UI design generation for: {description[:60]}...", flush=True)
         if not self.client:
+            print("    [UIAgent] OpenAI not configured, using fallback", flush=True)
             # Fallback to placeholder if OpenAI is not configured
             return {
                 "layout": {
