@@ -36,7 +36,11 @@ class ConnectionManager:
     
     async def send_personal_message(self, message: dict, websocket: WebSocket):
         """Send a message to a specific WebSocket."""
-        await websocket.send_json(message)
+        try:
+            await websocket.send_json(message)
+        except Exception as e:
+            print(f"Error sending WebSocket message: {e}", flush=True)
+            raise
     
     async def broadcast_to_job(self, job_id: str, message: dict):
         """Broadcast a message to all connections for a specific job."""
@@ -142,26 +146,44 @@ async def websocket_status(websocket: WebSocket, job_id: str):
         # Send initial status
         job = await get_job(job_id)
         if job:
-            await manager.send_personal_message({
-                "type": "status_update",
-                "data": {
-                    "job_id": job_id,
-                    "status": job["status"],
-                    "step": job["step"],
-                    "download_url": job["download_url"],
-                    "github_url": job["github_url"],
-                    "deployment_url": job["deployment_url"],
-                    "error": job.get("error")
-                }
-            }, websocket)
+            try:
+                await manager.send_personal_message({
+                    "type": "status_update",
+                    "data": {
+                        "job_id": job_id,
+                        "status": job["status"],
+                        "step": job["step"],
+                        "download_url": job["download_url"],
+                        "github_url": job["github_url"],
+                        "deployment_url": job["deployment_url"],
+                        "error": job.get("error")
+                    }
+                }, websocket)
+            except Exception as send_error:
+                print(f"Error sending initial status: {send_error}", flush=True)
+                raise
         
-        # Keep connection alive
+        # Keep connection alive - check connection state periodically
         while True:
             await asyncio.sleep(1)
+            # Check if connection is still open by trying to send a ping
+            try:
+                # FastAPI WebSocket doesn't have a direct state check, so we'll just continue
+                # The exception will be raised if connection is closed
+                pass
+            except Exception:
+                # Connection closed, break out of loop
+                break
             
     except WebSocketDisconnect:
+        print(f"WebSocket disconnected for job {job_id}", flush=True)
         manager.disconnect(websocket, job_id)
     except Exception as e:
-        manager.disconnect(websocket, job_id)
-        print(f"WebSocket error: {e}", flush=True)
+        print(f"WebSocket error for job {job_id}: {e}", flush=True)
+        import traceback
+        print(traceback.format_exc(), flush=True)
+        try:
+            manager.disconnect(websocket, job_id)
+        except:
+            pass
 

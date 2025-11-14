@@ -31,6 +31,20 @@ export function useWebSocket({
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const shouldReconnectRef = useRef(true)
+  
+  // Use refs for callbacks to prevent reconnection on every render
+  const onMessageRef = useRef(onMessage)
+  const onErrorRef = useRef(onError)
+  const onOpenRef = useRef(onOpen)
+  const onCloseRef = useRef(onClose)
+  
+  // Update refs when callbacks change
+  useEffect(() => {
+    onMessageRef.current = onMessage
+    onErrorRef.current = onError
+    onOpenRef.current = onOpen
+    onCloseRef.current = onClose
+  }, [onMessage, onError, onOpen, onClose])
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -45,26 +59,26 @@ export function useWebSocket({
 
       ws.onopen = () => {
         setIsConnected(true)
-        onOpen?.()
+        onOpenRef.current?.()
       }
 
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data)
           setLastMessage(message)
-          onMessage?.(message)
+          onMessageRef.current?.(message)
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error)
         }
       }
 
       ws.onerror = (error) => {
-        onError?.(error)
+        onErrorRef.current?.(error)
       }
 
       ws.onclose = () => {
         setIsConnected(false)
-        onClose?.()
+        onCloseRef.current?.()
 
         // Attempt to reconnect if enabled
         if (shouldReconnectRef.current && reconnect) {
@@ -76,7 +90,7 @@ export function useWebSocket({
     } catch (error) {
       console.error('WebSocket connection error:', error)
     }
-  }, [url, onMessage, onError, onOpen, onClose, reconnect, reconnectInterval])
+  }, [url, reconnect, reconnectInterval])
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false
@@ -102,7 +116,9 @@ export function useWebSocket({
     return () => {
       disconnect()
     }
-  }, [connect, disconnect])
+    // Only reconnect if URL changes, not if callbacks change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url])
 
   return {
     isConnected,
