@@ -52,6 +52,31 @@ class Orchestrator:
             print(f"Prompt: {prompt[:100]}...", flush=True)
             print(f"{'='*60}\n", flush=True)
             
+            # Early validation: Check OpenAI API key
+            from app.config import settings
+            if not settings.openai_api_key:
+                error_msg = (
+                    "OpenAI API key not configured. "
+                    "Please set the OPENAI_API_KEY environment variable. "
+                    "You can get an API key from https://platform.openai.com/api-keys"
+                )
+                print(f"[Job {job_id}] ERROR: {error_msg}", flush=True)
+                await self._update_job_status(
+                    job_id,
+                    "failed",
+                    "validation",
+                    error=error_msg
+                )
+                if self.websocket_manager:
+                    try:
+                        await self.websocket_manager.broadcast_job_list_update({
+                            "type": "job_updated",
+                            "data": {"job_id": job_id, "status": "failed"}
+                        })
+                    except Exception:
+                        pass
+                return
+            
             await self._update_job_status(job_id, "in_progress", "design")
             print(f"[Job {job_id}] Phase: DESIGN - Coordinating multi-agent generation...", flush=True)
             print(f"[Job {job_id}] Review threshold set to: {review_threshold}", flush=True)

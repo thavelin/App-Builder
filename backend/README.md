@@ -171,8 +171,8 @@ copy .env.example .env
 
 Edit `.env` and add your configuration:
 
-- **OPENAI_API_KEY** (required for AI features): Your OpenAI API key
-- **OPENAI_MODEL** (optional, defaults to `gpt-4`): The OpenAI model to use
+- **OPENAI_API_KEY** (REQUIRED): Your OpenAI API key. Get one from https://platform.openai.com/api-keys
+- **OPENAI_MODEL** (optional, defaults to `gpt-4-turbo-preview`): The OpenAI model to use. Recommended: `gpt-4-turbo-preview` for larger context window
 - **GITHUB_TOKEN** (optional): GitHub personal access token for repository creation
 - **GITHUB_USERNAME** (optional): Your GitHub username
 - **CORS_ORIGINS** (optional, defaults to `http://localhost:3000`): Comma-separated list of allowed origins
@@ -180,7 +180,7 @@ Edit `.env` and add your configuration:
 Example `.env` file:
 ```env
 OPENAI_API_KEY=sk-your-key-here
-OPENAI_MODEL=gpt-4
+OPENAI_MODEL=gpt-4-turbo-preview
 GITHUB_TOKEN=ghp_your-token-here
 GITHUB_USERNAME=your-username
 CORS_ORIGINS=http://localhost:3000
@@ -357,8 +357,8 @@ The system will find and use `main.py` as the entry point, but can also detect `
 
 ## Environment Variables
 
-- `OPENAI_API_KEY`: **Required** for OpenAI API calls (AI agent functionality)
-- `OPENAI_MODEL`: Optional, OpenAI model to use (default: `gpt-4`)
+- `OPENAI_API_KEY`: **REQUIRED** for OpenAI API calls. Without this, app generation will fail with a clear error message. Get your key from https://platform.openai.com/api-keys
+- `OPENAI_MODEL`: Optional. Defaults to `gpt-4-turbo-preview` (recommended for larger context). Can be set to `gpt-4`, `gpt-4-turbo-preview`, `gpt-4-1106-preview`, etc.
 - `GITHUB_TOKEN`: Optional, for GitHub integration
 - `GITHUB_USERNAME`: Optional, for GitHub integration
 - `HOST`: Server host (default: 0.0.0.0)
@@ -436,10 +436,20 @@ pytest --cov=app tests/
 
 ### Missing OpenAI API Key
 
-- The app will work without `OPENAI_API_KEY` but with limited functionality
-- Code generation will use placeholder responses
-- Reviewer will approve by default on first iteration with a warning
-- Check console for messages like "OpenAI not configured"
+- **The API key is now REQUIRED**. If `OPENAI_API_KEY` is not set, app generation will fail immediately with a clear error message.
+- Set the key in your `.env` file or as an environment variable before starting the server.
+
+### Context Length Errors
+
+If you see "context_length_exceeded" errors:
+
+1. **Use a model with larger context**: Set `OPENAI_MODEL=gpt-4-turbo-preview` (128k context) instead of `gpt-4` (8k context)
+2. **Simplify your prompt**: Break down complex requests into smaller, more focused prompts
+3. **Reduce scope**: The system will automatically scope down ambitious requests, but you can also be more specific about what you want
+
+The system automatically adjusts `max_tokens` based on the model you're using:
+- `gpt-4-turbo-preview` / `gpt-4-1106-preview`: 16,000 tokens
+- Standard `gpt-4`: 4,000 tokens (conservative for 8k context window)
 
 ### Debugging Tips
 

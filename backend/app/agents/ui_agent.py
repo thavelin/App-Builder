@@ -35,8 +35,9 @@ class UIAgent:
         """
         print(f"    [UIAgent] Generating UX plan from AppSpec...", flush=True)
         if not self.client:
-            print("    [UIAgent] OpenAI not configured, using fallback UX plan", flush=True)
-            return self._fallback_ux_plan(app_spec)
+            error_msg = "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
+            print(f"    [UIAgent] ERROR: {error_msg}", flush=True)
+            raise ValueError(error_msg)
         
         system_prompt = """You are a UX/UI design expert. Your job is to create a concrete UX plan from an application specification.
 

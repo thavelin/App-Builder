@@ -26,6 +26,27 @@ class CodeAgent:
         self.client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
         self.model = settings.openai_model
     
+    def _get_max_tokens(self) -> int:
+        """Get appropriate max_tokens based on model completion token limits."""
+        # Note: Completion tokens (max_tokens) are separate from context window size
+        # Even models with large context windows (128k) typically limit completions to 4096 tokens
+        
+        # GPT-4 Turbo models (gpt-4-turbo-preview, gpt-4-1106-preview, gpt-4-turbo)
+        if "turbo" in self.model.lower() or "1106" in self.model:
+            return 4000  # Max completion tokens for turbo models (4096 limit, use 4000 for safety)
+        # GPT-4o models
+        elif "gpt-4o" in self.model.lower():
+            return 4000  # Max completion tokens for GPT-4o (4096 limit, use 4000 for safety)
+        # Standard gpt-4 has 8k context, completion limit is typically 4096 but be conservative
+        elif "gpt-4" in self.model.lower():
+            return 3500  # Conservative for standard gpt-4 (8k context)
+        # GPT-3.5 models
+        elif "gpt-3.5" in self.model.lower():
+            return 2000  # Conservative for GPT-3.5
+        # Default for other models
+        else:
+            return 2000  # Safe default
+    
     async def generate_code_from_spec(
         self,
         app_spec: "AppSpec",
@@ -47,8 +68,9 @@ class CodeAgent:
         """
         print(f"    [CodeAgent] Generating code from AppSpec...", flush=True)
         if not self.client:
-            print("    [CodeAgent] OpenAI not configured, using fallback", flush=True)
-            return self._fallback_code(app_spec)
+            error_msg = "OpenAI API key not configured. Please set OPENAI_API_KEY environment variable."
+            print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
+            raise ValueError(error_msg)
         
         iteration_context = ""
         if previous_code and repair_brief:
@@ -125,6 +147,9 @@ Requirements:
 Return ONLY valid JSON, no markdown formatting or code blocks."""
 
         try:
+            max_tokens = self._get_max_tokens()
+            print(f"    [CodeAgent] Using model: {self.model}, max_tokens: {max_tokens}", flush=True)
+            
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -132,7 +157,7 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.7,
-                max_tokens=8000  # Increased for complete code generation
+                max_tokens=max_tokens
             )
             
             content = response.choices[0].message.content.strip()
@@ -159,14 +184,36 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
             return result
             
         except json.JSONDecodeError as e:
-            print(f"    [CodeAgent] Failed to parse response: {e}, using fallback", flush=True)
-            return self._fallback_code(app_spec)
+            error_msg = f"Failed to parse OpenAI response as JSON: {e}"
+            print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
+            raise ValueError(error_msg) from e
         except Exception as e:
-            print(f"    [CodeAgent] Error: {e}, using fallback", flush=True)
-            return self._fallback_code(app_spec)
+            error_str = str(e)
+            # Check for context length errors
+            if "context_length_exceeded" in error_str.lower() or "maximum context length" in error_str.lower():
+                error_msg = (
+                    f"Context length exceeded. The prompt is too long for model {self.model}. "
+                    f"Try: (1) Using a model with larger context (e.g., gpt-4-turbo-preview), "
+                    f"(2) Simplifying your prompt, or (3) Reducing the scope of your app."
+                )
+                print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
+                raise ValueError(error_msg) from e
+            # Check for API key errors
+            elif "api key" in error_str.lower() or "authentication" in error_str.lower() or "unauthorized" in error_str.lower():
+                error_msg = "OpenAI API authentication failed. Please check your OPENAI_API_KEY."
+                print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
+                raise ValueError(error_msg) from e
+            # Other errors
+            else:
+                error_msg = f"OpenAI API error: {error_str}"
+                print(f"    [CodeAgent] ERROR: {error_msg}", flush=True)
+                raise ValueError(error_msg) from e
     
     def _fallback_code(self, app_spec: "AppSpec") -> Dict[str, Any]:
-        """Generate basic fallback code."""
+        """
+        Generate basic fallback code.
+        NOTE: This should only be used in exceptional cases where we can't use OpenAI.
+        """
         return {
             "files": [
                 {
@@ -180,11 +227,21 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
     <style>
         body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
         h1 {{ color: #333; }}
+        .error {{ color: #d32f2f; background: #ffebee; padding: 15px; border-radius: 4px; margin: 20px 0; }}
     </style>
 </head>
 <body>
     <h1>{app_spec.goal}</h1>
-    <p>Generated application - OpenAI not configured</p>
+    <div class="error">
+        <strong>Error:</strong> Code generation failed. Please check the server logs for details.
+        <br><br>
+        Common issues:
+        <ul>
+            <li>OpenAI API key not configured (set OPENAI_API_KEY environment variable)</li>
+            <li>Context length exceeded (try a simpler prompt or use gpt-4-turbo-preview model)</li>
+            <li>API authentication error (check your API key is valid)</li>
+        </ul>
+    </div>
 </body>
 </html>"""
                 }
@@ -277,6 +334,7 @@ Requirements:
 Return ONLY valid JSON, no markdown formatting or code blocks."""
 
         try:
+            max_tokens = self._get_max_tokens()
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -284,7 +342,7 @@ Return ONLY valid JSON, no markdown formatting or code blocks."""
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
-                max_tokens=4000
+                max_tokens=max_tokens
             )
             
             content = response.choices[0].message.content.strip()
