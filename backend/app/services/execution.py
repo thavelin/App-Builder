@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 # Entry point candidate filenames
-ENTRYPOINT_CANDIDATES = ["app.py", "main.py", "index.js"]
+ENTRYPOINT_CANDIDATES = ["app.py", "main.py", "index.js", "index.html"]
 
 
 def find_entrypoint(project_root: Path) -> Optional[Path]:
@@ -110,7 +110,7 @@ class ExecutionService:
                 return {
                     "success": False,
                     "output": "",
-                    "errors": ["No entry point found. Expected app.py, main.py, or index.js"],
+                    "errors": ["No entry point found. Expected app.py, main.py, index.js, or index.html"],
                     "exit_code": 1
                 }
             
@@ -204,8 +204,9 @@ class ExecutionService:
         """
         Validate that the generated app runs without critical errors.
         
-        Requires a root-level entry point (app.py, main.py, or index.js) for validation,
-        but the execution service can find nested entrypoints recursively as a fallback.
+        Requires a root-level entry point (app.py, main.py, index.js, or index.html) for validation.
+        index.html is valid for static sites and doesn't require execution.
+        The execution service can find nested entrypoints recursively as a fallback.
         
         Returns a dictionary with validation results.
         """
@@ -229,14 +230,23 @@ class ExecutionService:
             
             return {
                 "valid": False,
-                "error": "No entry point found. Expected app.py, main.py, or index.js",
+                "error": "No entry point found. Expected app.py, main.py, index.js, or index.html",
                 "errors": ["No entry point found"],
                 "warnings": []
             }
         
         print(f"Root-level entry point found: {root_entry_point}", flush=True)
         
-        # TODO: Implement additional validation
+        # For static sites (index.html), validation is simpler
+        if root_entry_point == "index.html":
+            print("Static site detected (index.html). No execution validation needed.", flush=True)
+            return {
+                "valid": True,
+                "errors": [],
+                "warnings": ["Static site detected - entry point found: index.html"]
+            }
+        
+        # TODO: Implement additional validation for executable entrypoints
         # - Check for syntax errors
         # - Verify dependencies are specified
         # - Run basic tests if applicable

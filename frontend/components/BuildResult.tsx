@@ -69,7 +69,7 @@ export default function BuildResult({
                   Missing Entry Point
                 </p>
                 <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                  The generated app is missing a runnable file (e.g. app.py, main.py, or index.js). Please try again or refine your prompt.
+                  The generated app is missing a runnable file (e.g. app.py, main.py, index.js, or index.html). Please try again or refine your prompt.
                 </p>
               </div>
             ) : (

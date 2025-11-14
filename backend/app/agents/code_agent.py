@@ -27,8 +27,9 @@ class CodeAgent:
         """
         Generate code based on the task description using OpenAI.
         
-        The generated project must include a root-level entry point file (app.py, main.py, or index.js)
+        The generated project must include a root-level entry point file (app.py, main.py, index.js, or index.html)
         that can be used to run the application. This entry point is required for validation and execution.
+        For static sites, index.html is a valid entry point.
         
         Returns a dictionary with:
         - files: List of file paths and their contents
@@ -99,7 +100,7 @@ Requirements:
 - Use best practices and clean code
 - Add helpful comments
 - Ensure the code is functional and well-structured
-- The root of the project must contain a file named app.py, main.py, or index.js which acts as the entry point for running the app.
+- The root of the project must contain a file named app.py, main.py, index.js, or index.html which acts as the entry point for running the app. Use index.html for static websites.
 
 Return ONLY valid JSON, no markdown formatting or code blocks."""
 

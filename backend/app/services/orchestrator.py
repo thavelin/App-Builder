@@ -75,7 +75,7 @@ class Orchestrator:
                 # Provide user-friendly error message for missing entrypoint
                 error_message = validation_result.get("error", "Validation failed")
                 if "No entry point found" in error_message:
-                    error_message = "The generated app is missing a runnable file (e.g. app.py, main.py, or index.js). Please try again or refine your prompt."
+                    error_message = "The generated app is missing a runnable file (e.g. app.py, main.py, index.js, or index.html). Please try again or refine your prompt."
                 
                 await self._update_job_status(
                     job_id,

@@ -3,6 +3,7 @@ API routes for app generation endpoints.
 """
 import uuid
 import json
+import asyncio
 from typing import List
 from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from app.schemas.request import GenerateRequest
@@ -154,15 +155,13 @@ async def websocket_status(websocket: WebSocket, job_id: str):
                 }
             }, websocket)
         
-        # Keep connection alive and handle incoming messages
+        # Keep connection alive
         while True:
-            data = await websocket.receive_text()
-            # Echo back or handle client messages if needed
-            # For now, just keep connection alive
+            await asyncio.sleep(1)
             
     except WebSocketDisconnect:
         manager.disconnect(websocket, job_id)
     except Exception as e:
         manager.disconnect(websocket, job_id)
-        print(f"WebSocket error: {e}")
+        print(f"WebSocket error: {e}", flush=True)
 
